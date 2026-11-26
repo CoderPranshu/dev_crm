@@ -88,7 +88,7 @@
 
     $stageDisplayOrder = [
         'New Lead',
-        'Contacted',
+        'Meeting',
         'Proposal Pending',
         'Proposal Sent',
         'Negotiation',
@@ -112,6 +112,8 @@
         ->values()
         ->all();
 
+    $visibleStageNames = array_values(array_intersect($stages, $visibleStageNames));
+
 
     /*
     |--------------------------------------------------------------------------
@@ -121,9 +123,29 @@
     |--------------------------------------------------------------------------
     */
 
+    // A lead's New Lead age always uses its original creation date.
+    // Returning to any other stage uses its first recorded entry date.
+    $stageAge = function ($record, $stage) {
+        $enteredAt = $stage === 'New Lead' && $record instanceof \App\Models\Lead
+            ? $record->created_at
+            : $record->stage_entered_at;
+        if (!$enteredAt && $stage === 'New Lead') {
+            $enteredAt = $record->created_at;
+        }
+        if (!$enteredAt) {
+            return ['label' => 'Stage date unavailable', 'title' => 'Stage entry date was not recorded'];
+        }
+        $date = \Carbon\Carbon::parse($enteredAt);
+        $days = $date->isFuture() ? 0 : $date->copy()->startOfDay()->diffInDays(today());
+        return [
+            'label' => $days === 0 ? 'Today' : $days . ($days === 1 ? ' day ago' : ' days ago'),
+            'title' => 'Entered ' . $stage . ' on ' . $date->format('d M Y, h:i A'),
+        ];
+    };
+
     $stageCounts = [];
 
-    foreach ($stages as $stage) {
+    foreach ($visibleStageNames as $stage) {
 
         $stageLeadsCount = $leads->where('stage', $stage)->count();
 
@@ -168,7 +190,7 @@
 
     $stageDesign = [
         'New Lead' => ['color' => 'slate', 'icon' => 'fi-rr-users'],
-        'Contacted' => ['color' => 'blue', 'icon' => 'fi-rr-phone-call'],
+        'Meeting' => ['color' => 'blue', 'icon' => 'fi-rr-calendar'],
         'Proposal Pending' => ['color' => 'violet', 'icon' => 'fi-rr-file-signature'],
         'Proforma Pending' => ['color' => 'cyan', 'icon' => 'fi-rr-receipt'],
         'Send Proforma' => ['color' => 'teal', 'icon' => 'fi-rr-paper-plane'],
@@ -859,6 +881,13 @@
         -webkit-box-orient: vertical;
     }
 
+    .sp-record-id {
+        color: var(--sp-muted);
+        font-size: 11px;
+        line-height: 1.3;
+        margin: 0 0 6px;
+    }
+
     .lead-info {
         font-size: 12px;
         color: var(--sp-muted);
@@ -967,6 +996,25 @@
     .sp-card-type-icon.is-proforma {
         background: var(--sp-blue-soft);
         color: var(--sp-blue);
+    }
+
+    .cs-sales-pipeline .sp-stage-age {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        max-width: 100%;
+        margin: 2px 0 8px;
+        padding: 4px 8px;
+        border: 1px solid var(--sp-border);
+        border-radius: var(--sp-radius-pill);
+        background: var(--sp-surface-2);
+        color: var(--sp-text-soft);
+        font-size: 11px;
+        font-weight: 700;
+    }
+    .cs-sales-pipeline .sp-stage-age.is-unknown {
+        color: var(--sp-muted);
+        font-weight: 500;
     }
 
     .sp-stage-pill {
@@ -1708,6 +1756,61 @@
     }
 
 
+    .cs-sales-pipeline .sp-stage-access {
+        margin: 0 0 18px;
+        padding: 14px 18px;
+        border: 1px solid var(--sp-border);
+        border-radius: 14px;
+        background: var(--sp-surface);
+    }
+    .cs-sales-pipeline .sp-stage-access summary {
+        cursor: pointer;
+        font-weight: 800;
+        color: var(--sp-text);
+    }
+    .cs-sales-pipeline .sp-stage-access-list {
+        max-height: 480px;
+        overflow-y: auto;
+        margin-top: 15px;
+        display: grid;
+        gap: 12px;
+    }
+    .cs-sales-pipeline .sp-access-person {
+        padding: 14px;
+        border: 1px solid var(--sp-border);
+        border-radius: 12px;
+        background: var(--sp-bg);
+    }
+    .cs-sales-pipeline .sp-access-person h3 {
+        margin: 0 0 4px;
+        font-size: 14px;
+        font-weight: 800;
+    }
+    .cs-sales-pipeline .sp-access-person small {
+        display: block;
+        margin-bottom: 12px;
+        color: var(--sp-muted);
+    }
+    .cs-sales-pipeline .sp-access-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+    .cs-sales-pipeline .sp-access-grid label {
+        display: flex;
+        gap: 7px;
+        align-items: center;
+        padding: 8px;
+        border: 1px solid var(--sp-border);
+        border-radius: 8px;
+        background: var(--sp-surface);
+        font-size: 12px;
+        cursor: pointer;
+    }
+    .cs-sales-pipeline .sp-access-grid input {
+        flex-shrink: 0;
+    }
 </style>
 @endpush
 
@@ -1743,6 +1846,7 @@
 
             </div>
 
+            @if(in_array('Won', $visibleStageNames, true))
             <div class="sp-hero-metric">
                 <span class="sp-hero-metric-label">{{ get_phrase('Conversion Rate') }}</span>
                 <span class="sp-hero-metric-value">{{ $conversionRate }}<small>%</small></span>
@@ -1750,6 +1854,7 @@
                     {{ $wonCount }} {{ get_phrase('won of') }} {{ $totalPipelineItems }}
                 </span>
             </div>
+            @endif
 
         </div>
 
@@ -1765,30 +1870,40 @@
                 <span class="sp-ledger-label">{{ get_phrase('Active') }}</span>
             </div>
 
+            @if(in_array('Proposal Pending', $visibleStageNames, true))
             <div class="sp-ledger-item">
                 <span class="sp-ledger-value">{{ $proposalPendingCount }}</span>
                 <span class="sp-ledger-label">{{ get_phrase('Proposal Pending') }}</span>
             </div>
+            @endif
 
+            @if(in_array('Proforma Pending', $visibleStageNames, true))
             <div class="sp-ledger-item">
                 <span class="sp-ledger-value">{{ $proformaPendingCount }}</span>
                 <span class="sp-ledger-label">{{ get_phrase('Proforma Pending') }}</span>
             </div>
+            @endif
 
+            @if(in_array('Proposal Sent', $visibleStageNames, true))
             <div class="sp-ledger-item">
                 <span class="sp-ledger-value">{{ $proposalSentCount }}</span>
                 <span class="sp-ledger-label">{{ get_phrase('Proposal Sent') }}</span>
             </div>
+            @endif
 
+            @if(in_array('Won', $visibleStageNames, true))
             <div class="sp-ledger-item is-positive">
                 <span class="sp-ledger-value">{{ $wonCount }}</span>
                 <span class="sp-ledger-label">{{ get_phrase('Won') }}</span>
             </div>
+            @endif
 
+            @if(in_array('Lost', $visibleStageNames, true))
             <div class="sp-ledger-item is-negative">
                 <span class="sp-ledger-value">{{ $lostCount }}</span>
                 <span class="sp-ledger-label">{{ get_phrase('Lost') }}</span>
             </div>
+            @endif
 
         </div>
 
@@ -1809,7 +1924,7 @@
 
         <div class="sp-flow-bar">
 
-            @foreach($stages as $stage)
+            @foreach($visibleStageNames as $stage)
 
                 @php
                     $stageTotalForChart = $stageCounts[$stage] ?? 0;
@@ -1835,7 +1950,7 @@
 
         <div class="sp-flow-legend">
 
-            @foreach($stages as $stage)
+            @foreach($visibleStageNames as $stage)
 
                 @php
                     $stageTotalForChart = $stageCounts[$stage] ?? 0;
@@ -1859,6 +1974,45 @@
          TOOLBAR — client-side search only; it filters cards that
          are already rendered below, no new backend call.
          ========================================================= --}}
+
+    @if(auth()->user()->hasRole('Admin'))
+        <details class="sp-stage-access">
+            <summary>Manage Sales Stage Visibility</summary>
+            <p class="small text-muted mt-2 mb-0">
+                Har salesperson ko jo stage columns aur leads dikhane hain, unhe check karein.
+                Sab stages destination ke roop mein selectable rahenge. Hidden stage mein move kiya card is user's board se hat jayega.
+            </p>
+            <div class="sp-stage-access-list">
+                @forelse($salesPeople as $person)
+                    @php
+                        $configured = array_key_exists($person->id, $stageAccess);
+                        $granted = $stageAccess[$person->id] ?? [];
+                    @endphp
+                    <form method="POST"
+                          action="{{ url('/admin/leads/pipeline/stage-access') }}"
+                          class="sp-access-person">
+                        @csrf
+                        <input type="hidden" name="user_id" value="{{ $person->id }}">
+                        <h3>{{ $person->name }} {{ $person->last_name }}</h3>
+                        <small>{{ $person->email }} · {{ $configured ? 'Custom visibility' : 'Default: all stages visible' }}</small>
+                        <div class="sp-access-grid">
+                            @foreach($stages as $allowedStage)
+                                <label>
+                                    <input type="checkbox" name="stages[]"
+                                           value="{{ $allowedStage }}"
+                                           {{ !$configured || in_array($allowedStage, $granted, true) ? 'checked' : '' }}>
+                                    <span>{{ $allowedStage }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm">Save visibility</button>
+                    </form>
+                @empty
+                    <p class="mb-0">No active Sales users found.</p>
+                @endforelse
+            </div>
+        </details>
+    @endif
 
     <div class="sp-toolbar">
 
@@ -1906,7 +2060,7 @@
 
     <div class="pipeline-wrapper">
 
-        @foreach($stages as $stage)
+        @foreach($visibleStageNames as $stage)
 
             @php
                 $stageLeads = $leads->where('stage', $stage);
@@ -1976,8 +2130,11 @@
 
                             <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
 
-                                <div class="lead-name" title="{{ $lead->name }}">
-                                    {{ \Illuminate\Support\Str::limit($lead->name, 18) }}
+                                <div>
+                                    <div class="lead-name" title="{{ $lead->name }}">
+                                        {{ \Illuminate\Support\Str::limit($lead->name, 18) }}
+                                    </div>
+                                    <div class="sp-record-id">Lead ID: #{{ $lead->id }}</div>
                                 </div>
 
                                 <select
@@ -2004,6 +2161,24 @@
                                 <i class="fi-rr-phone-call"></i>
                                 {{ $lead->phone ?: 'No Phone' }}
                             </div>
+
+                            @php
+                                $age = $stageAge($lead, $lead->stage);
+                            @endphp
+                            <div class="sp-stage-age {{ $lead->stage_entered_at || ($lead->stage === 'New Lead' && $lead->created_at) ? '' : 'is-unknown' }}"
+                                 title="{{ $age['title'] }}">
+                                <i class="fi-rr-clock"></i> {{ $age['label'] }}
+                            </div>
+                            @if($lead->stage === 'Meeting' && ($scheduledMeeting = $meetingSchedules->get('lead:' . $lead->id)))
+                                <div class="lead-info sp-meeting-time"><i class="fi-rr-calendar"></i>
+                                    Meeting: {{ \Carbon\Carbon::parse($scheduledMeeting->meeting_at)->format('d M Y, h:i A') }}
+                                </div>
+                            @endif
+                            @if($lead->stage === 'Meeting')
+                                <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="openMeetingSchedule(this)">
+                                    {{ $meetingSchedules->has('lead:' . $lead->id) ? 'Reschedule Meeting' : 'Set Meeting Time' }}
+                                </button>
+                            @endif
 
                             <div class="lead-footer">
                                 @if($lead->userlead && $lead->userlead->name)
@@ -2130,7 +2305,7 @@
                          PROFORMAS
                          ================================================= --}}
 
-                    @foreach($stageProformas as $proforma)
+                    <?php foreach ($stageProformas as $proforma): ?>
 
                         @php
                             $proformaNumber = $proforma->proforma_no
@@ -2167,6 +2342,13 @@
 
                             <div class="lead-name" title="{{ $proformaCustomerName }}">
                                 {{ \Illuminate\Support\Str::limit($proformaCustomerName, 22) }}
+                            </div>
+                            <div class="sp-record-id">
+                                @if($proforma->lead_id)
+                                    Lead ID: #{{ $proforma->lead_id }}
+                                @else
+                                    Proforma ID: #{{ $proforma->id }}
+                                @endif
                             </div>
 
                             @if($proformaPhone)
@@ -2219,6 +2401,24 @@
 
                             {{--  --}}
 
+                            @php
+                                $age = $stageAge($proforma, $proforma->stage);
+                            @endphp
+                            <div class="sp-stage-age {{ $proforma->stage_entered_at || ($proforma->stage === 'New Lead' && $proforma->created_at) ? '' : 'is-unknown' }}"
+                                 title="{{ $age['title'] }}">
+                                <i class="fi-rr-clock"></i> {{ $age['label'] }}
+                            </div>
+                            @if($proforma->stage === 'Meeting' && ($scheduledMeeting = $meetingSchedules->get('proforma:' . $proforma->id)))
+                                <div class="lead-info sp-meeting-time"><i class="fi-rr-calendar"></i>
+                                    Meeting: {{ \Carbon\Carbon::parse($scheduledMeeting->meeting_at)->format('d M Y, h:i A') }}
+                                </div>
+                            @endif
+                            @if($proforma->stage === 'Meeting')
+                                <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="openMeetingSchedule(this)">
+                                    {{ $meetingSchedules->has('proforma:' . $proforma->id) ? 'Reschedule Meeting' : 'Set Meeting Time' }}
+                                </button>
+                            @endif
+
                             <div class="lead-info">
                                 <i class="fi-rr-calendar"></i>
                                 {{ optional($proforma->proforma_date)->format('d M Y') ?? $proforma->proforma_date ?? '-' }}
@@ -2265,7 +2465,7 @@
 
                         </div>
 
-                    @endforeach
+                    <?php endforeach; ?>
 
 
                     {{-- =================================================
@@ -2335,6 +2535,13 @@
                             <div class="lead-name" title="{{ $customerName }}">
                                 {{ \Illuminate\Support\Str::limit($customerName, 22) }}
                             </div>
+                            <div class="sp-record-id">
+                                @if($quotation->lead_id)
+                                    Lead ID: #{{ $quotation->lead_id }}
+                                @else
+                                    Quotation ID: #{{ $quotation->id }}
+                                @endif
+                            </div>
 
                             @if($customerPhone)
                                 <div class="lead-info">
@@ -2385,6 +2592,24 @@
 
 
                             {{--  --}}
+
+                            @php
+                                $age = $stageAge($quotation->lead, $quotation->lead->stage);
+                            @endphp
+                            <div class="sp-stage-age {{ $quotation->lead->stage_entered_at || ($quotation->lead->stage === 'New Lead' && $quotation->lead->created_at) ? '' : 'is-unknown' }}"
+                                 title="{{ $age['title'] }}">
+                                <i class="fi-rr-clock"></i> {{ $age['label'] }}
+                            </div>
+                            @if($quotation->lead->stage === 'Meeting' && ($scheduledMeeting = $meetingSchedules->get('lead:' . $quotation->lead_id)))
+                                <div class="lead-info sp-meeting-time"><i class="fi-rr-calendar"></i>
+                                    Meeting: {{ \Carbon\Carbon::parse($scheduledMeeting->meeting_at)->format('d M Y, h:i A') }}
+                                </div>
+                            @endif
+                            @if($quotation->lead->stage === 'Meeting')
+                                <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="openMeetingSchedule(this)">
+                                    {{ $meetingSchedules->has('lead:' . $quotation->lead_id) ? 'Reschedule Meeting' : 'Set Meeting Time' }}
+                                </button>
+                            @endif
 
                             <div class="lead-info">
                                 <i class="fi-rr-calendar"></i>
@@ -2975,7 +3200,7 @@
 {{-- =========================================================
      PIPELINE LEAD NOTE MODAL
      Required only for:
-     Contacted, Proposal Pending, Proforma Pending,
+     Meeting, Proposal Pending, Proforma Pending,
      Payment Waiting, Won, Lost
 ========================================================= --}}
 
@@ -3046,6 +3271,14 @@
                         -
                     </div>
 
+                </div>
+
+                <div class="mb-3" id="pipelineMeetingFields" hidden>
+                    <label for="pipelineMeetingAt" class="sp-note-label">
+                        <i class="bi bi-calendar-event"></i> Meeting Date &amp; Time <span class="text-danger">*</span>
+                    </label>
+                    <input type="datetime-local" id="pipelineMeetingAt" class="form-control sp-note-field">
+                    <small class="text-muted">India time (IST). Choose a future date and time.</small>
                 </div>
 
                 <div>
@@ -4765,7 +4998,7 @@
        PIPELINE LEAD NOTE GATE
        =========================================================
        Lead Note REQUIRED:
-       - Contacted
+       - Meeting
        - Proposal Pending
        - Proforma Pending
        - Payment Waiting
@@ -4780,7 +5013,7 @@
        ========================================================= */
 
     const pipelineLeadNoteStages = [
-        'Contacted',
+        'Meeting',
         'Proposal Pending',
         'Proforma Pending',
         'Payment Waiting',
@@ -4803,6 +5036,18 @@
     {
         return pipelineLeadNoteStages
             .includes(stage);
+    }
+
+    function openMeetingSchedule(button) {
+        const card = button.closest('.pipeline-card');
+        if (!card) return;
+        openPipelineLeadNoteModal(
+            card.dataset.type,
+            card.dataset.id,
+            card.dataset.leadId,
+            card.dataset.name || 'Lead',
+            'Meeting'
+        );
     }
 
 
@@ -4863,6 +5108,15 @@
             newStage:
                 newStage
         };
+
+        const meetingFields = document.getElementById('pipelineMeetingFields');
+        const meetingInput = document.getElementById('pipelineMeetingAt');
+        meetingFields.hidden = newStage !== 'Meeting';
+        meetingInput.value = '';
+        meetingInput.required = newStage === 'Meeting';
+        const minMeeting = new Date(Date.now() + 60 * 1000);
+        meetingInput.min = new Date(minMeeting.getTime() - minMeeting.getTimezoneOffset() * 60000)
+            .toISOString().slice(0, 16);
 
 
         document.getElementById(
@@ -4981,6 +5235,17 @@
 
         const note =
             noteInput.value.trim();
+
+        const meetingInput = document.getElementById('pipelineMeetingAt');
+        const meetingAt = pending?.newStage === 'Meeting' ? meetingInput.value : null;
+
+        if (pending?.newStage === 'Meeting' &&
+            (!meetingAt || new Date(meetingAt).getTime() <= Date.now())) {
+            errorBox.style.display = 'block';
+            errorBox.textContent = 'Select a future meeting date and time.';
+            meetingInput.focus();
+            return;
+        }
 
 
         if (!note) {
@@ -5189,7 +5454,8 @@
                 await updateLeadStage(
                     pending.recordId,
                     pending.newStage,
-                    true
+                    true,
+                    meetingAt
                 );
 
                 return;
@@ -5204,7 +5470,8 @@
                 await updateProformaStage(
                     pending.recordId,
                     pending.newStage,
-                    true
+                    true,
+                    meetingAt
                 );
 
                 return;
@@ -5219,7 +5486,8 @@
                 await updateQuotationStage(
                     pending.recordId,
                     pending.newStage,
-                    true
+                    true,
+                    meetingAt
                 );
 
                 return;
@@ -5317,7 +5585,7 @@
 
     const allPipelineStages = [
         'New Lead',
-        'Contacted',
+        'Meeting',
         'Proposal Pending',
         'Proforma Pending',
         'Send Proforma',
@@ -5344,7 +5612,7 @@
     }
 
 
-    async function postPipelineStage(url, stage)
+    async function postPipelineStage(url, stage, meetingAt = null)
     {
         const response = await fetch(
             url,
@@ -5359,7 +5627,8 @@
                 },
 
                 body: JSON.stringify({
-                    stage: stage
+                    stage: stage,
+                    ...(meetingAt ? {meeting_at: meetingAt.replace('T', ' ')} : {})
                 })
             }
         );
@@ -5528,7 +5797,8 @@
     async function updateLeadStage(
         leadId,
         newStage,
-        leadNoteAlreadySaved = false
+        leadNoteAlreadySaved = false,
+        meetingAt = null
     )
     {
         const allowedStages =
@@ -5553,7 +5823,8 @@
                     leadStageUrlTemplate,
                     leadId
                 ),
-                newStage
+                newStage,
+                meetingAt
             );
 
             window.location.reload();
@@ -5636,7 +5907,8 @@
     async function updateProformaStage(
         proformaId,
         newStage,
-        leadNoteAlreadySaved = false
+        leadNoteAlreadySaved = false,
+        meetingAt = null
     )
     {
         if (!allPipelineStages.includes(newStage)) {
@@ -5650,7 +5922,8 @@
                     proformaStageUrlTemplate,
                     proformaId
                 ),
-                newStage
+                newStage,
+                meetingAt
             );
 
             window.location.reload();
@@ -5748,7 +6021,8 @@
     async function updateQuotationStage(
         quotationId,
         newStage,
-        leadNoteAlreadySaved = false
+        leadNoteAlreadySaved = false,
+        meetingAt = null
     )
     {
         const allowedStages =
@@ -5769,7 +6043,8 @@
                     quotationStageUrlTemplate,
                     quotationId
                 ),
-                newStage
+                newStage,
+                meetingAt
             );
 
             window.location.reload();
@@ -6146,4 +6421,18 @@
 </script>
 
 @endpush
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

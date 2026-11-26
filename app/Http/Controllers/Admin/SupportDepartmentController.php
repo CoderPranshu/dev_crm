@@ -9,13 +9,13 @@ use App\Models\{SupportDepartment};
 class SupportDepartmentController extends Controller
 {
 
-    public function __construct()
-    {
-        $this->middleware('permission:support-department-list', ['only' => ['index']]);
-        $this->middleware('permission:support-department-crete', ['only' => ['store']]);
-        $this->middleware('permission:support-department-update', ['only' => ['update']]);
-        $this->middleware('permission:support-department-delete', ['only' => ['delete']]);
-    }
+    // public function __construct()
+    // {
+    //     $this->middleware('permission:support-department-list', ['only' => ['index']]);
+    //     $this->middleware('permission:support-department-crete', ['only' => ['store']]);
+    //     $this->middleware('permission:support-department-update', ['only' => ['update']]);
+    //     $this->middleware('permission:support-department-delete', ['only' => ['delete']]);
+    // }
 
 
     public function index()

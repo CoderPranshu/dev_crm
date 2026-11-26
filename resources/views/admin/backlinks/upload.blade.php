@@ -1,199 +1,150 @@
 @extends('index')
 
-@push('title', get_phrase('Upload Backlinks'))
+@push('title', get_phrase('Upload Backlink File'))
 
 @section('content')
 
-<form
-    action="{{ route('admin.backlinks.import') }}"
-    method="POST"
-    enctype="multipart/form-data">
+<div class="mainSection-title d-flex justify-content-between align-items-center">
 
-    @csrf
+    <div>
 
-<div class="mainSection-title">
+        <h4>Upload Backlink File</h4>
 
-    <div class="d-flex justify-content-between align-items-center">
-
-        <div>
-
-            <h4>
-
-                Upload Backlinks
-
-            </h4>
-
-            <small class="text-muted">
-
-                Import Backlinks using CSV
-
-            </small>
-
-        </div>
-
-        <a
-            href="{{ route('admin.backlinks.index') }}"
-            class="btn btn-light border">
-
-            <i class="fa-solid fa-arrow-left me-2"></i>
-
-            Back
-
-        </a>
+        <small class="text-muted">
+            Upload a CSV or Excel file. No column mapping is required.
+        </small>
 
     </div>
+
+    <a href="{{ route('admin.backlinks.index') }}" class="btn btn-light border">
+        <i class="fa-solid fa-arrow-left me-2"></i>Back
+    </a>
 
 </div>
 
 <div class="eSection-wrap">
 
-<div class="row">
+    @include('admin.backlinks.partials.alerts')
 
-<div class="col-lg-8">
+    <form
+        action="{{ route('admin.backlinks.prepare') }}"
+        method="POST"
+        enctype="multipart/form-data">
 
-<div class="card border-0 shadow-sm">
+        @csrf
 
-<div class="card-body">
+        <div class="row g-4">
 
-<div class="mb-4">
+            <div class="col-lg-8">
 
-<label class="form-label fw-semibold">
+                <div class="card border-0 shadow-sm">
 
-Category
+                    <div class="card-body p-4">
 
-<span class="text-danger">*</span>
+                        <div class="mb-4">
 
-</label>
+                            <label for="category" class="form-label fw-semibold">
+                                Category <span class="text-danger">*</span>
+                            </label>
 
-<select
-name="backlink_category_id"
-class="form-select"
-required>
+                            <select
+                                id="category"
+                                name="backlink_category_id"
+                                class="form-select @error('backlink_category_id') is-invalid @enderror"
+                                required>
 
-<option value="">
+                                <option value="">Select Category</option>
 
-Select Category
+                                @foreach($categories as $category)
 
-</option>
+                                    <option
+                                        value="{{ $category->id }}"
+                                        @selected((string) old('backlink_category_id', $selectedCategoryId) === (string) $category->id)>
+                                        {{ $category->name }}
+                                    </option>
 
-@foreach($categories as $category)
+                                @endforeach
 
-<option value="{{ $category->id }}">
+                            </select>
 
-{{ $category->name }}
+                            @error('backlink_category_id')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
 
-</option>
+                        </div>
 
-@endforeach
+                        <div>
 
-</select>
+                            <label for="csv" class="form-label fw-semibold">
+                                CSV / Excel File <span class="text-danger">*</span>
+                            </label>
 
-</div>
+                            <input
+                                id="csv"
+                                type="file"
+                                name="csv"
+                                accept=".csv,.xlsx,.xls"
+                                class="form-control @error('csv') is-invalid @enderror"
+                                required>
 
-<div class="mb-4">
+                            @error('csv')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
 
-<label class="form-label fw-semibold">
+                            <small class="text-muted d-block mt-2">
+                                CSV, XLSX or XLS only. Maximum size: 50 MB.
+                            </small>
 
-CSV File
+                        </div>
 
-<span class="text-danger">*</span>
+                        <div class="alert alert-primary mt-4 mb-0">
+                            <i class="fa-solid fa-circle-info me-2"></i>
+                            The original file will be stored securely and shown on the Backlinks index with Open and Download buttons.
+                        </div>
 
-</label>
+                    </div>
 
-<input
-type="file"
-name="csv"
-accept=".csv"
-class="form-control"
-required>
+                    <div class="card-footer bg-white p-3 text-end">
 
-<small class="text-muted">
+                        <button type="submit" class="btn btn-success">
+                            <i class="fa-solid fa-cloud-arrow-up me-2"></i>Upload File
+                        </button>
 
-Only CSV files allowed.
+                    </div>
 
-</small>
+                </div>
 
-</div>
+            </div>
 
-<div class="alert alert-primary">
+            <div class="col-lg-4">
 
-<h6>
+                <div class="card border-0 shadow-sm">
 
-CSV Format
+                    <div class="card-body p-4">
 
-</h6>
+                        <h6>Instructions</h6>
 
-<pre class="mb-0">
+                        <ul class="mb-0 ps-3">
+                            <li>Select a category before uploading.</li>
+                            <li>CSV, XLSX and XLS files are supported.</li>
+                            <li>Maximum file size is 50 MB.</li>
+                            <li>No column mapping will be shown.</li>
+                            <li>No data will be inserted into the backlinks table.</li>
+                            <li>The original file will appear on the index page.</li>
+                            <li>You can open or download the file anytime.</li>
+                            <li>Excel preview uses the first worksheet.</li>
+                        </ul>
 
-website_url,domain_authority,page_authority
+                    </div>
 
-https://abc.com,55,42
+                </div>
 
-https://xyz.com,60,50
+            </div>
 
-</pre>
+        </div>
 
-</div>
-
-</div>
-
-<div class="card-footer bg-white">
-
-<div class="d-flex justify-content-end">
-
-<button
-class="btn btn-success">
-
-<i class="fa-solid fa-file-arrow-up me-2"></i>
-
-Upload CSV
-
-</button>
-
-</div>
-
-</div>
-
-</div>
-
-</div>
-
-<div class="col-lg-4">
-
-<div class="card border-0 shadow-sm">
-
-<div class="card-header">
-
-Instructions
-
-</div>
-
-<div class="card-body">
-
-<ul class="mb-0">
-
-<li>Duplicate website automatically skipped.</li>
-
-<li>Maximum 50MB CSV.</li>
-
-<li>Only URL, DA and PA required.</li>
-
-<li>Username & Password later filled by SEO Team.</li>
-
-<li>Status automatically Available.</li>
-
-</ul>
+    </form>
 
 </div>
-
-</div>
-
-</div>
-
-</div>
-
-</div>
-
-</form>
 
 @endsection

@@ -17,6 +17,7 @@ class SeoProjectLocation extends Model
     protected $fillable = [
         'seo_plan_client_id',
         'type',
+        'state_group_id',
         'name',
     ];
 
@@ -39,4 +40,10 @@ class SeoProjectLocation extends Model
     {
         return $query->where('type', self::TYPE_STATE);
     }
+
+    public function stateGroup(): BelongsTo
+    {
+        return $this->belongsTo(SeoProjectStateGroup::class, 'state_group_id');
+    }
 }
+

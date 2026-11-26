@@ -13,7 +13,7 @@
         "jenssegers/agent": "^2.6",
         "laravel/breeze": "^1.14",
         "laravel/framework": "^9.19",
-        "laravel/sanctum": "^3.0",
+        "laravel/sanctum": "^3.3",
         "laravel/tinker": "^2.7",
         "maatwebsite/excel": "^1.1",
         "mews/purifier": "^3.4",

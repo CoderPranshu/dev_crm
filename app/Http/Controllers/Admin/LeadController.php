@@ -29,13 +29,6 @@ use App\Models\LeadImportBatch;
 use Illuminate\Support\Str;
 
 
-
-
-
-
-
-
-
 class LeadController extends Controller
 {
 
@@ -52,28 +45,20 @@ class LeadController extends Controller
     {
         $user = auth()->user();
 
-        /*
-        |--------------------------------------------------------------------------
-        | ACCESS CONTROL
-        |--------------------------------------------------------------------------
-        |
-        | Admin:
-        |   - All Pending + Contacted leads
-        |   - Assigned + Unassigned
-        |
-        | Sales:
-        |   - Only Pending + Contacted leads assigned to logged-in Sales user
-        |
-        | Other:
-        |   - Only Pending + Contacted leads assigned to logged-in user
-        |
-        */
-
+        // Lead Index is the queue of leads awaiting an outcome.
+        // Completed Contacted leads are outside this queue. For outcomes
+        // that keep status pending, the latest action removes the lead from
+        // this queue while retaining its activity in Lead Actions.
         $baseQuery = Lead::query()
-            ->whereIn('status', [
-                'pending',
-                'contacted',
-            ]);
+            ->where('status', 'pending')
+            ->whereDoesntHave('latestAction', function ($query) {
+                $query->whereIn('action_type', [
+                    'not_contactable',
+                    'wrong_category',
+                    'out_of_area',
+                    'marketing_job',
+                ]);
+            });
 
 
         /*
@@ -85,9 +70,8 @@ class LeadController extends Controller
         if ($user->hasRole('Admin')) {
 
             /*
-            * Admin sees all pending/contacted leads.
+            * Admin sees pending leads awaiting action.
             */
-
         } else {
 
             /*
@@ -141,9 +125,9 @@ class LeadController extends Controller
                     'source',
                     'manual'
                 )
-                ->orWhereNull(
-                    'source'
-                );
+                    ->orWhereNull(
+                        'source'
+                    );
             })
             ->count();
 
@@ -152,20 +136,6 @@ class LeadController extends Controller
             ->where(
                 'status',
                 'pending'
-            )
-            ->count();
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | CONTACTED COUNT
-        |--------------------------------------------------------------------------
-        */
-
-        $contactedLeads = (clone $baseQuery)
-            ->where(
-                'status',
-                'contacted'
             )
             ->count();
 
@@ -201,23 +171,23 @@ class LeadController extends Controller
                         "%{$search}%"
                     )
 
-                    ->orWhere(
-                        'phone',
-                        'like',
-                        "%{$search}%"
-                    )
+                        ->orWhere(
+                            'phone',
+                            'like',
+                            "%{$search}%"
+                        )
 
-                    ->orWhere(
-                        'remarks',
-                        'like',
-                        "%{$search}%"
-                    )
+                        ->orWhere(
+                            'remarks',
+                            'like',
+                            "%{$search}%"
+                        )
 
-                    ->orWhere(
-                        'requirement',
-                        'like',
-                        "%{$search}%"
-                    );
+                        ->orWhere(
+                            'requirement',
+                            'like',
+                            "%{$search}%"
+                        );
                 }
             );
         }
@@ -239,7 +209,6 @@ class LeadController extends Controller
                     'source',
                     'csv'
                 );
-
             } elseif (
                 $request->source === 'manual'
             ) {
@@ -251,54 +220,17 @@ class LeadController extends Controller
                             'source',
                             'manual'
                         )
-                        ->orWhereNull(
-                            'source'
-                        );
+                            ->orWhereNull(
+                                'source'
+                            );
                     }
                 );
             }
         }
 
 
-        /*
-        |--------------------------------------------------------------------------
-        | STATUS FILTER
-        |--------------------------------------------------------------------------
-        |
-        | IMPORTANT:
-        |
-        | Only pending/contacted are allowed.
-        |
-        | Even if someone manually changes URL:
-        |
-        | ?status=reject
-        |
-        | reject will NOT be returned.
-        |
-        */
-
-        if ($request->filled('status')) {
-
-            $allowedStatuses = [
-                'pending',
-                'contacted',
-            ];
-
-
-            if (
-                in_array(
-                    $request->status,
-                    $allowedStatuses,
-                    true
-                )
-            ) {
-
-                $query->where(
-                    'status',
-                    $request->status
-                );
-            }
-        }
+        // The index has only Pending leads, so other status URL filters
+        // cannot bring completed Contacted or Not Contactable leads back.
 
 
         /*
@@ -326,7 +258,6 @@ class LeadController extends Controller
                 $query->whereNull(
                     'user_id'
                 );
-
             } else {
 
                 $query->where(
@@ -386,24 +317,17 @@ class LeadController extends Controller
             ->get();
 
 
-        /*
-        |--------------------------------------------------------------------------
-        | CATEGORY COUNTS
-        |--------------------------------------------------------------------------
-        |
-        | Only Pending + Contacted should be counted.
-        |
-        */
-
-        $categoryCountQuery =
-            Lead::query()
-                ->whereIn(
-                    'status',
-                    [
-                        'pending',
-                        'contacted',
-                    ]
-                );
+        // Category tabs use the same waiting queue as the main listing.
+        $categoryCountQuery = Lead::query()
+            ->where('status', 'pending')
+            ->whereDoesntHave('latestAction', function ($query) {
+                $query->whereIn('action_type', [
+                    'not_contactable',
+                    'wrong_category',
+                    'out_of_area',
+                    'marketing_job',
+                ]);
+            });
 
 
         /*
@@ -431,16 +355,16 @@ class LeadController extends Controller
 
         $categoryCounts =
             $categoryCountQuery
-                ->selectRaw(
-                    'categories_id, COUNT(*) as total'
-                )
-                ->groupBy(
-                    'categories_id'
-                )
-                ->pluck(
-                    'total',
-                    'categories_id'
-                );
+            ->selectRaw(
+                'categories_id, COUNT(*) as total'
+            )
+            ->groupBy(
+                'categories_id'
+            )
+            ->pluck(
+                'total',
+                'categories_id'
+            );
 
 
         /*
@@ -453,15 +377,15 @@ class LeadController extends Controller
 
             $salesUsers =
                 User::role('Sales')
-                    ->orderBy(
-                        'name'
-                    )
-                    ->get();
-
+                ->orderBy(
+                    'name'
+                )
+                ->get();
         } else {
 
             $salesUsers =
-                collect();
+                User::role('Sales')->where('branch_id', $user->branch_id)
+                ->where('status', 'active')->orderBy('name')->get();
         }
 
 
@@ -471,7 +395,16 @@ class LeadController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        return view('admin.leads.index',
+        $pendingCallQuery = Lead::query()
+            ->where('pending_call_action', 1)
+            ->where('status', 'pending');
+        if (!$user->hasRole('Admin')) {
+            $pendingCallQuery->where('user_id', $user->id);
+        }
+        $pendingCallLead = $pendingCallQuery->orderByDesc('updated_at')->first();
+
+        return view(
+            'admin.leads.index',
             compact(
                 'leads',
                 'categories',
@@ -481,7 +414,7 @@ class LeadController extends Controller
                 'csvLeads',
                 'manualLeads',
                 'pendingLeads',
-                'contactedLeads'
+                'pendingCallLead'
             )
         );
     }
@@ -542,31 +475,31 @@ class LeadController extends Controller
         ], [
 
             'name.required' =>
-                'Lead name is required.',
+            'Lead name is required.',
 
             'phone.required' =>
-                'Phone number is required.',
+            'Phone number is required.',
 
             'phone.digits' =>
-                'Phone number must be exactly 10 digits.',
+            'Phone number must be exactly 10 digits.',
 
             'email.required' =>
-                'Email address is required.',
+            'Email address is required.',
 
             'email.email' =>
-                'Please enter a valid email address.',
+            'Please enter a valid email address.',
 
             'requirement.required' =>
-                'Requirement is required.',
+            'Requirement is required.',
 
             'categories_id.required' =>
-                'Please select a category.',
+            'Please select a category.',
 
             'branch_id.required' =>
-                'Please select a branch.',
+            'Please select a branch.',
 
             'sales_user_id.required' =>
-                'Please select a Sales Person.',
+            'Please select a Sales Person.',
 
         ]);
 
@@ -673,25 +606,25 @@ class LeadController extends Controller
         $response = Lead::create([
 
             'name' =>
-                $data['name'],
+            $data['name'],
 
             'phone' =>
-                $data['phone'],
+            $data['phone'],
 
             'email' =>
-                $data['email'],
+            $data['email'],
 
             'requirement' =>
-                $data['requirement'],
+            $data['requirement'],
 
             'address' =>
-                $data['address'] ?? null,
+            $data['address'] ?? null,
 
             /*
             * Selected Category
             */
             'categories_id' =>
-                $data['categories_id'],
+            $data['categories_id'],
 
             /*
             * Selected Sales Person
@@ -700,13 +633,13 @@ class LeadController extends Controller
             * Lead DB field = user_id
             */
             'user_id' =>
-                $salesUser->id,
+            $salesUser->id,
 
             /*
             * Sales Person ki branch
             */
             'branch_id' =>
-                $salesUser->branch_id,
+            $salesUser->branch_id,
 
         ]);
 
@@ -774,16 +707,21 @@ class LeadController extends Controller
     {
         $lead = Lead::where('id', $id)->firstOrFail();
 
+        abort_unless(auth()->user()->hasRole('Admin') || (int) $lead->user_id === (int) auth()->id(), 403);
+
         $data = $request->validate([
             'status' => 'required|string',
-            'user_id' => 'nullable|string',
+            'user_id' => 'nullable|integer|exists:users,id',
             'remarks' => 'nullable',
             'call_schedule' => 'nullable'
         ]);
 
+        if (isset($data['user_id']) && (int) $data['user_id'] !== (int) $lead->user_id) {
+            $this->recordTransfer($lead, (int) $data['user_id'], 'change_status', (string) ($data['remarks'] ?? ''));
+        }
         $res = $lead->update([
             'status' => $data['status'],
-            'user_id' => $data['user_id'],
+            'user_id' => $data['user_id'] ?? $lead->user_id,
             'remarks' => $data['remarks'],
             'call_schedule' => $data['call_schedule']
         ]);
@@ -856,6 +794,8 @@ class LeadController extends Controller
     public function callAgain($id = null)
     {
         $user = auth()->user();
+        $priority = request('priority');
+        if (!in_array($priority, ['hot', 'warm', 'cold'], true)) $priority = null;
 
         /*
         |--------------------------------------------------------------------------
@@ -864,7 +804,8 @@ class LeadController extends Controller
         | Sirf status = call
         */
         $query = Lead::query()
-            ->where('status', 'call');
+            ->where('status', 'call')
+            ->whereDate('call_schedule', now('Asia/Kolkata')->toDateString());
 
 
         /*
@@ -902,6 +843,8 @@ class LeadController extends Controller
         }
 
 
+        if ($priority) $query->where('follow_up_priority', $priority);
+
         /*
         |--------------------------------------------------------------------------
         | LEADS
@@ -930,7 +873,8 @@ class LeadController extends Controller
         |--------------------------------------------------------------------------
         */
         $countQuery = Lead::query()
-            ->where('status', 'call');
+            ->where('status', 'call')
+            ->whereDate('call_schedule', now('Asia/Kolkata')->toDateString());
 
 
         if (!$user->hasRole('Admin')) {
@@ -947,6 +891,7 @@ class LeadController extends Controller
         | TOTAL CALL AGAIN
         |--------------------------------------------------------------------------
         */
+        if ($priority) $countQuery->where('follow_up_priority', $priority);
         $totalCallAgain = (clone $countQuery)
             ->count();
 
@@ -980,7 +925,8 @@ class LeadController extends Controller
                 'leads',
                 'categories',
                 'categoryCounts',
-                'totalCallAgain'
+                'totalCallAgain',
+                'priority'
             )
         );
     }
@@ -1346,24 +1292,24 @@ class LeadController extends Controller
     // }
 
     public function importPreview()
-{
-    /*
+    {
+        /*
     |--------------------------------------------------------------------------
     | GET IMPORT SESSION
     |--------------------------------------------------------------------------
     */
 
-    $importData = session('lead_import');
+        $importData = session('lead_import');
 
 
-    if (
-        !$importData ||
-        empty($importData['batch_id']) ||
-        empty($importData['file_path'])
-    ) {
+        if (
+            !$importData ||
+            empty($importData['batch_id']) ||
+            empty($importData['file_path'])
+        ) {
 
-        return response(
-            '<div style="
+            return response(
+                '<div style="
                 font-family: Arial, sans-serif;
                 padding: 20px;
                 color: #b91c1c;
@@ -1373,27 +1319,27 @@ class LeadController extends Controller
             ">
                 Import session expired. Please upload the file again.
             </div>',
-            419
-        );
-    }
+                419
+            );
+        }
 
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | IMPORT BATCH
     |--------------------------------------------------------------------------
     */
 
-    $importBatch =
-        \App\Models\LeadImportBatch::find(
-            $importData['batch_id']
-        );
+        $importBatch =
+            \App\Models\LeadImportBatch::find(
+                $importData['batch_id']
+            );
 
 
-    if (!$importBatch) {
+        if (!$importBatch) {
 
-        return response(
-            '<div style="
+            return response(
+                '<div style="
                 font-family: Arial, sans-serif;
                 padding: 20px;
                 color: #b91c1c;
@@ -1403,79 +1349,79 @@ class LeadController extends Controller
             ">
                 Import batch was not found.
             </div>',
-            404
-        );
-    }
+                404
+            );
+        }
 
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | CURRENT USER / SECURITY
     |--------------------------------------------------------------------------
     */
 
-    $currentUser = auth()->user();
+        $currentUser = auth()->user();
 
 
-    if (
-        !$currentUser->hasRole('Admin') &&
-        (int) $importBatch->branch_id !==
-        (int) $currentUser->branch_id
-    ) {
+        if (
+            !$currentUser->hasRole('Admin') &&
+            (int) $importBatch->branch_id !==
+            (int) $currentUser->branch_id
+        ) {
 
-        abort(
-            403,
-            'You are not allowed to preview this import.'
-        );
-    }
+            abort(
+                403,
+                'You are not allowed to preview this import.'
+            );
+        }
 
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | PERMANENT FILE PATH
     |--------------------------------------------------------------------------
     */
 
-    $fileRelativePath =
-        $importData['file_path']
-        ?? $importBatch->file_path;
+        $fileRelativePath =
+            $importData['file_path']
+            ?? $importBatch->file_path;
 
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | NORMALIZE PATH
     |--------------------------------------------------------------------------
     */
 
-    $fileRelativePath = ltrim(
-        str_replace(
-            '\\',
-            '/',
-            $fileRelativePath
-        ),
-        '/'
-    );
+        $fileRelativePath = ltrim(
+            str_replace(
+                '\\',
+                '/',
+                $fileRelativePath
+            ),
+            '/'
+        );
 
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | SECURITY CHECK
     |--------------------------------------------------------------------------
     */
 
-    if (
-        str_contains(
-            $fileRelativePath,
-            '../'
-        ) ||
-        !str_starts_with(
-            $fileRelativePath,
-            'lead-imports/'
-        )
-    ) {
+        if (
+            str_contains(
+                $fileRelativePath,
+                '../'
+            ) ||
+            !str_starts_with(
+                $fileRelativePath,
+                'lead-imports/'
+            )
+        ) {
 
-        return response(
-            '<div style="
+            return response(
+                '<div style="
                 font-family: Arial, sans-serif;
                 padding: 20px;
                 color: #b91c1c;
@@ -1485,34 +1431,34 @@ class LeadController extends Controller
             ">
                 Invalid import file path.
             </div>',
-            422
-        );
-    }
+                422
+            );
+        }
 
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | ABSOLUTE FILE PATH
     |--------------------------------------------------------------------------
     */
 
-    $filePath =
-        storage_path(
-            'app/' .
-            $fileRelativePath
-        );
+        $filePath =
+            storage_path(
+                'app/' .
+                    $fileRelativePath
+            );
 
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | FILE MUST EXIST
     |--------------------------------------------------------------------------
     */
 
-    if (!file_exists($filePath)) {
+        if (!file_exists($filePath)) {
 
-        return response(
-            '<div style="
+            return response(
+                '<div style="
                 font-family: Arial, sans-serif;
                 padding: 20px;
                 color: #b91c1c;
@@ -1522,112 +1468,109 @@ class LeadController extends Controller
             ">
                 Uploaded file is no longer available.
             </div>',
-            404
-        );
-    }
+                404
+            );
+        }
 
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | ORIGINAL FILE NAME
     |--------------------------------------------------------------------------
     */
 
-    $fileName =
-        $importBatch->original_file_name
-        ?: basename($filePath);
+        $fileName =
+            $importBatch->original_file_name
+            ?: basename($filePath);
 
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | FILE EXTENSION
     |--------------------------------------------------------------------------
     */
 
-    $extension = strtolower(
-        pathinfo(
-            $filePath,
-            PATHINFO_EXTENSION
-        )
-    );
+        $extension = strtolower(
+            pathinfo(
+                $filePath,
+                PATHINFO_EXTENSION
+            )
+        );
 
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | READ CSV / EXCEL
     |--------------------------------------------------------------------------
     */
 
-    try {
+        try {
 
-        if (
-            $extension === 'csv' ||
-            $extension === 'txt'
-        ) {
+            if (
+                $extension === 'csv' ||
+                $extension === 'txt'
+            ) {
 
-            $reader = new Csv();
+                $reader = new Csv();
 
-            $reader->setDelimiter(',');
-            $reader->setEnclosure('"');
+                $reader->setDelimiter(',');
+                $reader->setEnclosure('"');
 
-            $spreadsheet =
-                $reader->load(
-                    $filePath
-                );
+                $spreadsheet =
+                    $reader->load(
+                        $filePath
+                    );
+            } elseif (
+                $extension === 'xlsx' ||
+                $extension === 'xls'
+            ) {
 
-        } elseif (
-            $extension === 'xlsx' ||
-            $extension === 'xls'
-        ) {
+                $spreadsheet =
+                    IOFactory::load(
+                        $filePath
+                    );
+            } else {
 
-            $spreadsheet =
-                IOFactory::load(
-                    $filePath
-                );
-
-        } else {
-
-            return response(
-                '<div style="
+                return response(
+                    '<div style="
                     font-family: Arial, sans-serif;
                     padding: 20px;
                     color: #b91c1c;
                 ">
                     Unsupported file format.
                 </div>',
-                422
-            );
-        }
+                    422
+                );
+            }
 
 
-        /*
+            /*
         |--------------------------------------------------------------------------
         | ACTIVE SHEET
         |--------------------------------------------------------------------------
         */
 
-        $worksheet =
-            $spreadsheet->getActiveSheet();
+            $worksheet =
+                $spreadsheet->getActiveSheet();
 
 
-        /*
+            /*
         |--------------------------------------------------------------------------
         | CONVERT SHEET TO ARRAY
         |--------------------------------------------------------------------------
         */
 
-        $rows =
-            $worksheet->toArray(
-                null,
-                true,
-                true,
-                false
-            );
+            $rows =
+                $worksheet->toArray(
+                    null,
+                    true,
+                    true,
+                    false
+                );
+        } catch (\Throwable $e) {
 
-    } catch (\Throwable $e) {
-
-        return response(
-            '<div style="
+            return response(
+                '<div style="
                 font-family: Arial, sans-serif;
                 padding: 20px;
                 color: #b91c1c;
@@ -1637,18 +1580,158 @@ class LeadController extends Controller
             ">
                 Unable to preview this CSV/Excel file.
             </div>',
-            422
-        );
-    }
+                422
+            );
+        }
 
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | EMPTY FILE CHECK
     |--------------------------------------------------------------------------
     */
 
-    if (empty($rows)) {
+        if (empty($rows)) {
+
+            if (isset($spreadsheet)) {
+
+                $spreadsheet
+                    ->disconnectWorksheets();
+
+                unset($spreadsheet);
+            }
+
+            return response(
+                'The uploaded file is empty.',
+                422
+            );
+        }
+
+
+        /*
+    |--------------------------------------------------------------------------
+    | FIRST ROW = HEADERS
+    |--------------------------------------------------------------------------
+    */
+
+        $headers =
+            array_shift(
+                $rows
+            );
+
+
+        /*
+    |--------------------------------------------------------------------------
+    | CLEAN HEADERS
+    |--------------------------------------------------------------------------
+    */
+
+        $headers =
+            array_map(
+                function ($header) {
+
+                    $header =
+                        (string) (
+                            $header ?? ''
+                        );
+
+                    $header =
+                        preg_replace(
+                            '/^\xEF\xBB\xBF/',
+                            '',
+                            $header
+                        );
+
+                    return trim(
+                        $header
+                    );
+                },
+                $headers
+            );
+
+
+        /*
+    |--------------------------------------------------------------------------
+    | REMOVE EMPTY TRAILING COLUMNS
+    |--------------------------------------------------------------------------
+    */
+
+        while (
+            count($headers) > 0 &&
+            trim(
+                (string) end($headers)
+            ) === ''
+        ) {
+
+            array_pop(
+                $headers
+            );
+        }
+
+
+        /*
+    |--------------------------------------------------------------------------
+    | REMOVE COMPLETELY EMPTY DATA ROWS
+    |--------------------------------------------------------------------------
+    */
+
+        $rows =
+            array_values(
+                array_filter(
+                    $rows,
+                    function ($row) {
+
+                        foreach ($row as $value) {
+
+                            if (
+                                trim(
+                                    (string) (
+                                        $value ?? ''
+                                    )
+                                ) !== ''
+                            ) {
+
+                                return true;
+                            }
+                        }
+
+                        return false;
+                    }
+                )
+            );
+
+
+        /*
+    |--------------------------------------------------------------------------
+    | TOTAL DATA ROWS
+    |--------------------------------------------------------------------------
+    */
+
+        $totalRows =
+            count(
+                $rows
+            );
+
+
+        /*
+    |--------------------------------------------------------------------------
+    | PREVIEW FIRST 30 DATA ROWS
+    |--------------------------------------------------------------------------
+    */
+
+        $previewRows =
+            array_slice(
+                $rows,
+                0,
+                30
+            );
+
+
+        /*
+    |--------------------------------------------------------------------------
+    | CLEAN SPREADSHEET MEMORY
+    |--------------------------------------------------------------------------
+    */
 
         if (isset($spreadsheet)) {
 
@@ -1658,164 +1741,24 @@ class LeadController extends Controller
             unset($spreadsheet);
         }
 
-        return response(
-            'The uploaded file is empty.',
-            422
-        );
-    }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | FIRST ROW = HEADERS
-    |--------------------------------------------------------------------------
-    */
-
-    $headers =
-        array_shift(
-            $rows
-        );
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | CLEAN HEADERS
-    |--------------------------------------------------------------------------
-    */
-
-    $headers =
-        array_map(
-            function ($header) {
-
-                $header =
-                    (string) (
-                        $header ?? ''
-                    );
-
-                $header =
-                    preg_replace(
-                        '/^\xEF\xBB\xBF/',
-                        '',
-                        $header
-                    );
-
-                return trim(
-                    $header
-                );
-            },
-            $headers
-        );
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | REMOVE EMPTY TRAILING COLUMNS
-    |--------------------------------------------------------------------------
-    */
-
-    while (
-        count($headers) > 0 &&
-        trim(
-            (string) end($headers)
-        ) === ''
-    ) {
-
-        array_pop(
-            $headers
-        );
-    }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | REMOVE COMPLETELY EMPTY DATA ROWS
-    |--------------------------------------------------------------------------
-    */
-
-    $rows =
-        array_values(
-            array_filter(
-                $rows,
-                function ($row) {
-
-                    foreach ($row as $value) {
-
-                        if (
-                            trim(
-                                (string) (
-                                    $value ?? ''
-                                )
-                            ) !== ''
-                        ) {
-
-                            return true;
-                        }
-                    }
-
-                    return false;
-                }
-            )
-        );
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | TOTAL DATA ROWS
-    |--------------------------------------------------------------------------
-    */
-
-    $totalRows =
-        count(
-            $rows
-        );
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | PREVIEW FIRST 30 DATA ROWS
-    |--------------------------------------------------------------------------
-    */
-
-    $previewRows =
-        array_slice(
-            $rows,
-            0,
-            30
-        );
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | CLEAN SPREADSHEET MEMORY
-    |--------------------------------------------------------------------------
-    */
-
-    if (isset($spreadsheet)) {
-
-        $spreadsheet
-            ->disconnectWorksheets();
-
-        unset($spreadsheet);
-    }
-
-
-    /*
+        /*
     |--------------------------------------------------------------------------
     | RETURN PREVIEW
     |--------------------------------------------------------------------------
     */
 
-    return view(
-        'admin.leads.import_preview',
-        compact(
-            'headers',
-            'previewRows',
-            'totalRows',
-            'fileName',
-            'importBatch'
-        )
-    );
-}
+        return view(
+            'admin.leads.import_preview',
+            compact(
+                'headers',
+                'previewRows',
+                'totalRows',
+                'fileName',
+                'importBatch'
+            )
+        );
+    }
 
 
 
@@ -2008,11 +1951,11 @@ class LeadController extends Controller
 
         $salesUser =
             \App\Models\User::role('Sales')
-                ->where(
-                    'id',
-                    $importData['sales_user_id']
-                )
-                ->first();
+            ->where(
+                'id',
+                $importData['sales_user_id']
+            )
+            ->first();
 
         if (!$salesUser) {
 
@@ -2199,7 +2142,7 @@ class LeadController extends Controller
         $filePath =
             storage_path(
                 'app/' .
-                $fileRelativePath
+                    $fileRelativePath
             );
 
 
@@ -2951,7 +2894,6 @@ class LeadController extends Controller
                 $spreadsheet = $reader->load(
                     $filePath
                 );
-
             } else {
 
                 $spreadsheet = IOFactory::load(
@@ -2982,7 +2924,6 @@ class LeadController extends Controller
                 true,
                 false
             );
-
         } catch (\Throwable $e) {
 
             /*
@@ -3189,19 +3130,19 @@ class LeadController extends Controller
                 */
 
                 'original_file_name' =>
-                    $originalFileName,
+                $originalFileName,
 
                 'stored_file_name' =>
-                    $storedFileName,
+                $storedFileName,
 
                 'file_path' =>
-                    $fileRelativePath,
+                $fileRelativePath,
 
                 'file_type' =>
-                    $extension,
+                $extension,
 
                 'file_size' =>
-                    $file->getSize(),
+                $file->getSize(),
 
 
                 /*
@@ -3211,13 +3152,13 @@ class LeadController extends Controller
                 */
 
                 'total_rows' =>
-                    $totalRows,
+                $totalRows,
 
                 'imported_rows' =>
-                    0,
+                0,
 
                 'skipped_rows' =>
-                    0,
+                0,
 
 
                 /*
@@ -3227,16 +3168,16 @@ class LeadController extends Controller
                 */
 
                 'sales_user_id' =>
-                    $salesUser->id,
+                $salesUser->id,
 
                 'category_id' =>
-                    $leadCategory->id,
+                $leadCategory->id,
 
                 'uploaded_by' =>
-                    auth()->id(),
+                auth()->id(),
 
                 'branch_id' =>
-                    $salesUser->branch_id,
+                $salesUser->branch_id,
 
 
                 /*
@@ -3246,9 +3187,8 @@ class LeadController extends Controller
                 */
 
                 'status' =>
-                    'pending',
+                'pending',
             ]);
-
         } catch (\Throwable $e) {
 
             /*
@@ -3407,7 +3347,7 @@ class LeadController extends Controller
                 */
 
                 'batch_id' =>
-                    $importBatch->id,
+                $importBatch->id,
 
 
                 /*
@@ -3417,13 +3357,13 @@ class LeadController extends Controller
                 */
 
                 'file' =>
-                    $storedFileName,
+                $storedFileName,
 
                 'file_path' =>
-                    $fileRelativePath,
+                $fileRelativePath,
 
                 'original_file_name' =>
-                    $originalFileName,
+                $originalFileName,
 
 
                 /*
@@ -3433,10 +3373,10 @@ class LeadController extends Controller
                 */
 
                 'sales_user_id' =>
-                    $salesUser->id,
+                $salesUser->id,
 
                 'category_id' =>
-                    $leadCategory->id,
+                $leadCategory->id,
 
 
                 /*
@@ -3446,13 +3386,13 @@ class LeadController extends Controller
                 */
 
                 'headers' =>
-                    $headers,
+                $headers,
 
                 'fields' =>
-                    $fields,
+                $fields,
 
                 'auto_mapping' =>
-                    $autoMapping,
+                $autoMapping,
             ],
         ]);
 
@@ -3469,7 +3409,7 @@ class LeadController extends Controller
     }
 
 
-    
+
 
     // public function import(Request $request)
     // {
@@ -4317,7 +4257,6 @@ class LeadController extends Controller
                 $spreadsheet = $reader->load(
                     $filePath
                 );
-
             } elseif (
                 $extension === 'xlsx' ||
                 $extension === 'xls'
@@ -4326,7 +4265,6 @@ class LeadController extends Controller
                 $spreadsheet = IOFactory::load(
                     $filePath
                 );
-
             } else {
 
                 throw new \Exception(
@@ -4357,7 +4295,6 @@ class LeadController extends Controller
                 true,
                 false
             );
-
         } catch (\Throwable $e) {
 
             return redirect()
@@ -4754,7 +4691,7 @@ class LeadController extends Controller
                     */
 
                     'import_batch_id' =>
-                        $importBatch->id,
+                    $importBatch->id,
 
 
                     /*
@@ -4764,19 +4701,19 @@ class LeadController extends Controller
                     */
 
                     'name' =>
-                        $name,
+                    $name,
 
                     'phone' =>
-                        $phone,
+                    $phone,
 
                     'email' =>
-                        $email ?: null,
+                    $email ?: null,
 
                     'remarks' =>
-                        $remarks ?: null,
+                    $remarks ?: null,
 
                     'requirement' =>
-                        $requirement ?: null,
+                    $requirement ?: null,
 
 
                     /*
@@ -4786,7 +4723,7 @@ class LeadController extends Controller
                     */
 
                     'categories_id' =>
-                        $leadCategory->id,
+                    $leadCategory->id,
 
 
                     /*
@@ -4796,7 +4733,7 @@ class LeadController extends Controller
                     */
 
                     'source' =>
-                        'csv',
+                    'csv',
 
 
                     /*
@@ -4806,7 +4743,7 @@ class LeadController extends Controller
                     */
 
                     'user_id' =>
-                        $salesUser->id,
+                    $salesUser->id,
 
 
                     /*
@@ -4816,7 +4753,7 @@ class LeadController extends Controller
                     */
 
                     'branch_id' =>
-                        $salesUser->branch_id,
+                    $salesUser->branch_id,
 
 
                     /*
@@ -4826,10 +4763,10 @@ class LeadController extends Controller
                     */
 
                     'status' =>
-                        $status,
+                    $status,
 
                     'lead_date' =>
-                        $leadDate,
+                    $leadDate,
                 ]);
 
                 $imported++;
@@ -4844,13 +4781,13 @@ class LeadController extends Controller
 
             $importBatch->update([
                 'imported_rows' =>
-                    $imported,
+                $imported,
 
                 'skipped_rows' =>
-                    $skipped,
+                $skipped,
 
                 'status' =>
-                    'completed',
+                'completed',
             ]);
 
 
@@ -4861,7 +4798,6 @@ class LeadController extends Controller
             */
 
             \Illuminate\Support\Facades\DB::commit();
-
         } catch (\Throwable $e) {
 
             /*
@@ -4973,11 +4909,11 @@ class LeadController extends Controller
                 'success_message',
 
                 "Leads imported successfully. "
-                . "File: {$importBatch->original_file_name}, "
-                . "Category: {$leadCategory->title}, "
-                . "Assigned To: {$salesUser->name}, "
-                . "Imported: {$imported}, "
-                . "Skipped: {$skipped}"
+                    . "File: {$importBatch->original_file_name}, "
+                    . "Category: {$leadCategory->title}, "
+                    . "Assigned To: {$salesUser->name}, "
+                    . "Imported: {$imported}, "
+                    . "Skipped: {$skipped}"
             );
     }
 
@@ -5045,7 +4981,7 @@ class LeadController extends Controller
     //     return view('admin.leads.rejectedleads', compact('leads', 'categories', 'categoryCounts'));
     // }
 
-    public function rejectedLead(Request $request, $id = null) 
+    public function rejectedLead(Request $request, $id = null)
     {
         $user = auth()->user();
 
@@ -5068,7 +5004,6 @@ class LeadController extends Controller
         ) {
 
             $perPage = (int) $perPageValue;
-
         } elseif ($perPageValue === 'custom') {
 
             $perPage = (int) $request->get(
@@ -5083,7 +5018,6 @@ class LeadController extends Controller
                     $perPage
                 )
             );
-
         } else {
 
             $perPage = 50;
@@ -5189,37 +5123,37 @@ class LeadController extends Controller
                         'like',
                         '%' . $search . '%'
                     )
-                    ->orWhere(
-                        'phone',
-                        'like',
-                        '%' . $search . '%'
-                    )
-                    ->orWhere(
-                        'email',
-                        'like',
-                        '%' . $search . '%'
-                    )
-                    ->orWhere(
-                        'remarks',
-                        'like',
-                        '%' . $search . '%'
-                    )
-                    ->orWhere(
-                        'requirement',
-                        'like',
-                        '%' . $search . '%'
-                    )
-                    ->orWhereHas(
-                        'leadcat',
-                        function ($categoryQuery) use ($search) {
+                        ->orWhere(
+                            'phone',
+                            'like',
+                            '%' . $search . '%'
+                        )
+                        ->orWhere(
+                            'email',
+                            'like',
+                            '%' . $search . '%'
+                        )
+                        ->orWhere(
+                            'remarks',
+                            'like',
+                            '%' . $search . '%'
+                        )
+                        ->orWhere(
+                            'requirement',
+                            'like',
+                            '%' . $search . '%'
+                        )
+                        ->orWhereHas(
+                            'leadcat',
+                            function ($categoryQuery) use ($search) {
 
-                            $categoryQuery->where(
-                                'title',
-                                'like',
-                                '%' . $search . '%'
-                            );
-                        }
-                    );
+                                $categoryQuery->where(
+                                    'title',
+                                    'like',
+                                    '%' . $search . '%'
+                                );
+                            }
+                        );
                 }
             );
         }
@@ -5234,6 +5168,7 @@ class LeadController extends Controller
             ->with([
                 'leadcat',
                 'assignedUser',
+                'latestNote',
             ])
             ->latest()
             ->paginate(
@@ -5264,7 +5199,7 @@ class LeadController extends Controller
     }
 
     public function bulkDeleteRejected(
-    Request $request
+        Request $request
     ) {
         $user = auth()->user();
 
@@ -5367,7 +5302,6 @@ class LeadController extends Controller
 
 
             \Illuminate\Support\Facades\DB::commit();
-
         } catch (\Throwable $e) {
 
             \Illuminate\Support\Facades\DB::rollBack();
@@ -5385,7 +5319,7 @@ class LeadController extends Controller
         return back()->with(
             'success_message',
             $deletedCount .
-            ' rejected lead(s) deleted successfully.'
+                ' rejected lead(s) deleted successfully.'
         );
     }
 
@@ -5400,22 +5334,22 @@ class LeadController extends Controller
             'items' => 'required|array|min:1',
 
             'items.*.product_id' =>
-                'required|exists:products,id',
+            'required|exists:products,id',
 
             'items.*.quantity' =>
-                'required|numeric|min:1',
+            'required|numeric|min:1',
 
             'items.*.unit_price' =>
-                'required|numeric|min:0',
+            'required|numeric|min:0',
 
             'discount' =>
-                'nullable|numeric|min:0|max:100',
+            'nullable|numeric|min:0|max:100',
 
             'vat' =>
-                'nullable|numeric|min:0|max:100',
+            'nullable|numeric|min:0|max:100',
 
             'note' =>
-                'nullable|string|max:2000',
+            'nullable|string|max:2000',
         ]);
 
 
@@ -5439,7 +5373,7 @@ class LeadController extends Controller
             return response()->json([
                 'status' => false,
                 'message' =>
-                    'You are not allowed to create proforma for this lead.',
+                'You are not allowed to create proforma for this lead.',
             ], 403);
         }
 
@@ -5560,25 +5494,25 @@ class LeadController extends Controller
                 $preparedItems[] = [
 
                     'product_id' =>
-                        $product->id,
+                    $product->id,
 
                     'quantity' =>
-                        $quantity,
+                    $quantity,
 
                     'price' =>
-                        $price,
+                    $price,
 
                     'hsn_code' =>
-                        $hsnCode,
+                    $hsnCode,
 
                     'gst' =>
-                        $gstRate,
+                    $gstRate,
 
                     'tax_amount' =>
-                        $taxAmount,
+                    $taxAmount,
 
                     'line_total' =>
-                        $lineAmount + $taxAmount,
+                    $lineAmount + $taxAmount,
 
                 ];
             }
@@ -5632,8 +5566,8 @@ class LeadController extends Controller
 
             $nextId =
                 $lastProforma
-                    ? $lastProforma->id + 1
-                    : 1;
+                ? $lastProforma->id + 1
+                : 1;
 
 
             $proformaNumber =
@@ -5655,40 +5589,40 @@ class LeadController extends Controller
             $proforma = Proforma::create([
 
                 'proforma_no' =>
-                    $proformaNumber,
+                $proformaNumber,
 
                 'customer_id' =>
-                    $customerId,
+                $customerId,
 
                 'proforma_date' =>
-                    now()->toDateString(),
+                now()->toDateString(),
 
                 'subtotal' =>
-                    round($subtotal, 2),
+                round($subtotal, 2),
 
                 'tax' =>
-                    round($vatAmount, 2),
+                round($vatAmount, 2),
 
                 'total' =>
-                    round($grandTotal, 2),
+                round($grandTotal, 2),
 
                 'status' =>
-                    'proforma',
+                'proforma',
 
                 /*
                 * SALES PIPELINE STAGE
                 */
                 'stage' =>
-                    'Send Proforma',
+                'Send Proforma',
 
                 'notes' =>
-                    $request->note,
+                $request->note,
 
                 'branch_id' =>
-                    $branchId,
+                $branchId,
 
                 'lead_id' =>
-                    $lead->id,
+                $lead->id,
 
             ]);
 
@@ -5704,25 +5638,25 @@ class LeadController extends Controller
                 ProformaItem::create([
 
                     'proforma_id' =>
-                        $proforma->id,
+                    $proforma->id,
 
                     'product_id' =>
-                        $item['product_id'],
+                    $item['product_id'],
 
                     'price' =>
-                        $item['price'],
+                    $item['price'],
 
                     'quantity' =>
-                        $item['quantity'],
+                    $item['quantity'],
 
                     'line_total' =>
-                        $item['line_total'],
+                    $item['line_total'],
 
                     'hsn_code' =>
-                        $item['hsn_code'],
+                    $item['hsn_code'],
 
                     'gst' =>
-                        $item['gst'],
+                    $item['gst'],
 
                 ]);
             }
@@ -5740,50 +5674,50 @@ class LeadController extends Controller
             LeadAction::create([
 
                 'lead_id' =>
-                    $lead->id,
+                $lead->id,
 
                 'user_id' =>
-                    $user->id,
+                $user->id,
 
                 'action_type' =>
-                    'proforma_shared',
+                'proforma_shared',
 
                 'action_label' =>
-                    'Proforma Created',
+                'Proforma Created',
 
                 /*
                 * quotation_id intentionally set nahi kar rahe.
                 * Ye record quotation nahi hai.
                 */
                 'quotation_id' =>
-                    null,
+                null,
 
                 'note' =>
-                    'Proforma ' .
+                'Proforma ' .
                     $proformaNumber .
                     ' created for this lead.',
 
                 'meta' => [
 
                     'proforma_id' =>
-                        $proforma->id,
+                    $proforma->id,
 
                     'proforma_number' =>
-                        $proformaNumber,
+                    $proformaNumber,
 
                     'discount' =>
-                        $discountPercent,
+                    $discountPercent,
 
                     'gst' =>
-                        $vatPercent,
+                    $vatPercent,
 
                     'stage' =>
-                        'Send Proforma',
+                    'Send Proforma',
 
                 ],
 
                 'action_at' =>
-                    now(),
+                now(),
 
             ]);
 
@@ -5800,6 +5734,7 @@ class LeadController extends Controller
 
             $lead->status =
                 'quick-quotation';
+            $lead->pending_call_action = false;
 
             $lead->save();
 
@@ -5816,46 +5751,45 @@ class LeadController extends Controller
             return response()->json([
 
                 'status' =>
-                    true,
+                true,
 
                 'message' =>
-                    'Proforma created successfully.',
+                'Proforma created successfully.',
 
                 'proforma_id' =>
-                    $proforma->id,
+                $proforma->id,
 
                 'proforma_no' =>
-                    $proformaNumber,
+                $proformaNumber,
 
                 'stage' =>
-                    'Send Proforma',
+                'Send Proforma',
 
                 'subtotal' =>
-                    round(
-                        $subtotal,
-                        2
-                    ),
+                round(
+                    $subtotal,
+                    2
+                ),
 
                 'discount_amount' =>
-                    round(
-                        $discountAmount,
-                        2
-                    ),
+                round(
+                    $discountAmount,
+                    2
+                ),
 
                 'vat_amount' =>
-                    round(
-                        $vatAmount,
-                        2
-                    ),
+                round(
+                    $vatAmount,
+                    2
+                ),
 
                 'total_amount' =>
-                    round(
-                        $grandTotal,
-                        2
-                    ),
+                round(
+                    $grandTotal,
+                    2
+                ),
 
             ]);
-
         } catch (\Throwable $e) {
 
             DB::rollBack();
@@ -5866,10 +5800,10 @@ class LeadController extends Controller
             return response()->json([
 
                 'status' =>
-                    false,
+                false,
 
                 'message' =>
-                    $e->getMessage(),
+                $e->getMessage(),
 
             ], 500);
         }
@@ -5899,39 +5833,23 @@ class LeadController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        $lead->status = 'contacted';
+        if ($lead->pending_call_action) {
+            return response()->json(['status' => false, 'message' => 'Complete the pending call action first.'], 409);
+        }
 
+        // Dialing is only an attempt. The submitted outcome decides Contacted.
+        $lead->pending_call_action = true;
         $lead->save();
 
 
-        /*
-        |--------------------------------------------------------------------------
-        | Save Activity
-        |--------------------------------------------------------------------------
-        */
-
-        LeadAction::create([
-
-            'lead_id' => $lead->id,
-
-            'user_id' => $user->id,
-
-            'action_type' => 'contacted',
-
-            'action_label' => 'Contacted',
-
-            'note' => 'Call initiated from lead panel.',
-
-            'action_at' => now(),
-
-        ]);
-
+        // The final submitted outcome creates the single activity row.
+        // Keep the pending flag so closing the browser does not skip the form.
 
         return response()->json([
 
             'status' => true,
 
-            'lead_status' => 'contacted',
+            'lead_status' => $lead->status,
 
         ]);
     }
@@ -6018,6 +5936,55 @@ class LeadController extends Controller
         }
 
 
+        $callReasonLabel = null;
+        $activityNote = $request->note;
+        $wasPendingCall = (bool) $lead->pending_call_action;
+        if ($wasPendingCall && in_array($request->action_type, ['not_interested', 'deal_close'], true)) {
+            $request->validate(['note' => 'required|string|max:2000']);
+            if (!trim((string) $request->note)) {
+                return response()->json(['status' => false, 'message' => 'Write a call note for this outcome.'], 422);
+            }
+        }
+        if ($wasPendingCall) {
+            if (in_array($request->action_type, ['call', 'whatsapp', 'follow_up'], true)) {
+                return response()->json(['status' => false, 'message' => 'Choose a call outcome. Use Schedule Follow Up for a follow up.'], 422);
+            }
+            if (in_array($request->action_type, ['contacted', 'not_contactable'], true)) {
+                $reasonOptions = $request->action_type === 'contacted'
+                    ? [
+                        'interested' => 'Interested',
+                        'information_requested' => 'Asked for Details',
+                        'follow_up_later' => 'Will Decide Later',
+                        'discuss_internal' => 'Will Discuss Internally',
+                        'other' => 'Other',
+                    ]
+                    : [
+                        'busy' => 'Busy',
+                        'no_answer' => 'No Answer',
+                        'switched_off' => 'Switched Off',
+                        'out_of_coverage' => 'Out of Coverage',
+                        'invalid_number' => 'Invalid Number',
+                        'other' => 'Other',
+                    ];
+                $request->validate([
+                    'call_reason' => ['required', 'string', \Illuminate\Validation\Rule::in(array_keys($reasonOptions))],
+                ]);
+                if ($request->call_reason === 'other') {
+                    $request->validate(['note' => 'required|string|max:2000']);
+                }
+                $callReasonLabel = $reasonOptions[$request->call_reason];
+            }
+            $activityNote = $request->filled('note')
+                ? trim((string) $request->note)
+                : $allowedActions[$request->action_type] . ($callReasonLabel ? ': ' . $callReasonLabel : '');
+            \App\Models\LeadNote::create([
+                'lead_id' => $lead->id,
+                'created_by' => $user->id,
+                'description' => $activityNote,
+            ]);
+            $lead->pending_call_action = false;
+        }
+
         /*
         |--------------------------------------------------------------------------
         | NOT INTERESTED
@@ -6032,6 +5999,18 @@ class LeadController extends Controller
 
         if ($request->action_type === 'not_interested') {
 
+            if ($wasPendingCall) {
+                LeadAction::create([
+                    'lead_id' => $lead->id,
+                    'user_id' => $user->id,
+                    'action_type' => 'not_interested',
+                    'action_label' => 'Not Interested',
+                    'call_count' => 1,
+                    'note' => $activityNote,
+                    'action_at' => now(),
+                ]);
+            }
+
             $lead->status = 'reject';
             $lead->save();
 
@@ -6039,18 +6018,18 @@ class LeadController extends Controller
                 'status' => true,
 
                 'message' =>
-                    'Lead marked as Not Interested.',
+                'Lead marked as Not Interested.',
 
                 'lead_status' =>
-                    'reject',
+                'reject',
 
                 'call_count' =>
-                    (int) LeadAction::where(
-                        'lead_id',
-                        $lead->id
-                    )->sum(
-                        'call_count'
-                    ),
+                (int) LeadAction::where(
+                    'lead_id',
+                    $lead->id
+                )->sum(
+                    'call_count'
+                ),
 
                 /*
                  * This response is only for the frontend.
@@ -6058,21 +6037,21 @@ class LeadController extends Controller
                  */
                 'action' => [
                     'id' =>
-                        null,
+                    null,
 
                     'type' =>
-                        'not_interested',
+                    'not_interested',
 
                     'label' =>
-                        'Not Interested',
+                    'Not Interested',
 
                     'user' =>
-                        $user->name,
+                    $user->name,
 
                     'time' =>
-                        now()->format(
-                            'd M Y, h:i A'
-                        ),
+                    now()->format(
+                        'd M Y, h:i A'
+                    ),
                 ],
             ]);
         }
@@ -6113,9 +6092,9 @@ class LeadController extends Controller
                 'lead_id',
                 $lead->id
             )
-            ->orderByDesc('action_at')
-            ->orderByDesc('id')
-            ->first();
+                ->orderByDesc('action_at')
+                ->orderByDesc('id')
+                ->first();
 
 
             /*
@@ -6178,7 +6157,6 @@ class LeadController extends Controller
                 $action->save();
 
                 $action->refresh();
-
             } else {
 
                 /*
@@ -6224,33 +6202,33 @@ class LeadController extends Controller
                 'status' => true,
 
                 'message' =>
-                    'Call count updated successfully.',
+                'Call count updated successfully.',
 
                 'lead_status' =>
-                    $lead->status,
+                $lead->status,
 
                 'call_count' =>
-                    (int) $action->call_count,
+                (int) $action->call_count,
 
                 'action' => [
                     'id' =>
-                        $action->id,
+                    $action->id,
 
                     'type' =>
-                        $action->action_type,
+                    $action->action_type,
 
                     'label' =>
-                        $action->action_label,
+                    $action->action_label,
 
                     'user' =>
-                        $user->name,
+                    $user->name,
 
                     'time' =>
-                        optional(
-                            $action->action_at
-                        )->format(
-                            'd M Y, h:i A'
-                        ),
+                    optional(
+                        $action->action_at
+                    )->format(
+                        'd M Y, h:i A'
+                    ),
                 ],
             ]);
         }
@@ -6267,36 +6245,36 @@ class LeadController extends Controller
 
         $action = LeadAction::create([
             'lead_id' =>
-                $lead->id,
+            $lead->id,
 
             'user_id' =>
-                $user->id,
+            $user->id,
 
             'action_type' =>
-                $request->action_type,
+            $request->action_type,
 
-            'action_label' =>
-                $allowedActions[
-                    $request->action_type
-                ],
+            'action_label' => $callReasonLabel
+                ? $allowedActions[$request->action_type] . ': ' . $callReasonLabel
+                : $allowedActions[$request->action_type],
 
             /*
             * New normal action starts at 0 calls.
             */
             'call_count' =>
-                0,
+            $wasPendingCall ? 1 : 0,
 
             'note' =>
-                $request->note,
+            $activityNote,
 
             'quotation_id' =>
-                $request->quotation_id ?: null,
+            $request->quotation_id ?: null,
 
-            'meta' =>
-                $request->meta ?? null,
+            'meta' => $callReasonLabel
+                ? ['call_reason' => $request->call_reason, 'call_reason_label' => $callReasonLabel]
+                : ($request->meta ?? null),
 
             'action_at' =>
-                now(),
+            now(),
         ]);
 
 
@@ -6315,6 +6293,10 @@ class LeadController extends Controller
 
                 break;
 
+            case 'not_contactable':
+                $lead->status = 'pending';
+                break;
+
 
             case 'deal_close':
 
@@ -6322,8 +6304,6 @@ class LeadController extends Controller
                     'accept';
 
                 break;
-
-
         }
 
 
@@ -6340,9 +6320,9 @@ class LeadController extends Controller
             'lead_id',
             $lead->id
         )
-        ->sum(
-            'call_count'
-        );
+            ->sum(
+                'call_count'
+            );
 
 
         /*
@@ -6355,40 +6335,47 @@ class LeadController extends Controller
             'status' => true,
 
             'message' =>
-                'Lead action saved successfully.',
+            'Lead action saved successfully.',
 
             'lead_status' =>
-                $lead->status,
+            $lead->status,
 
             'call_count' =>
-                (int) $currentCallCount,
+            (int) $currentCallCount,
 
             'action' => [
                 'id' =>
-                    $action->id,
+                $action->id,
 
                 'type' =>
-                    $action->action_type,
+                $action->action_type,
 
                 'label' =>
-                    $action->action_label,
+                $action->action_label,
 
                 'user' =>
-                    $user->name,
+                $user->name,
 
                 'time' =>
-                    optional(
-                        $action->action_at
-                    )->format(
-                        'd M Y, h:i A'
-                    ),
+                optional(
+                    $action->action_at
+                )->format(
+                    'd M Y, h:i A'
+                ),
             ],
         ]);
     }
 
 
-    public function leadActionsIndex(Request $request) 
+    public function leadActionsIndex(Request $request)
     {
+        $request->validate([
+            'search' => 'nullable|string|max:200',
+            'action_type' => 'nullable|string|max:50',
+            'user_id' => 'nullable|integer',
+            'from_date' => 'nullable|date_format:Y-m-d',
+            'to_date' => 'nullable|date_format:Y-m-d|after_or_equal:from_date',
+        ]);
         $user =
             auth()->user();
 
@@ -6424,6 +6411,44 @@ class LeadController extends Controller
         }
 
 
+        // Apply shared filters before computing cards, tab counts and the list.
+        if ($request->filled('search')) {
+            $search = trim($request->search);
+            $baseQuery->where(function ($q) use ($search) {
+                $q->where('action_label', 'like', "%{$search}%")
+                    ->orWhere('action_type', 'like', "%{$search}%")
+                    ->orWhere('note', 'like', "%{$search}%")
+                    ->orWhereHas('lead', function ($leadQuery) use ($search) {
+                        $leadQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('user', function ($userQuery) use ($search) {
+                        $userQuery->where('name', 'like', "%{$search}%");
+                    });
+            });
+        }
+        if ($user->hasRole('Admin') && $request->filled('user_id')) {
+            $baseQuery->where('user_id', (int) $request->user_id);
+        }
+        if ($request->filled('from_date')) $baseQuery->whereDate('action_at', '>=', $request->from_date);
+        if ($request->filled('to_date')) $baseQuery->whereDate('action_at', '<=', $request->to_date);
+
+        $callCountBase = clone $baseQuery;
+        $baseQuery->where(function ($q) {
+            $q->whereNotIn('action_type', ['call', 'contacted'])
+                ->orWhereNull('note')
+                ->orWhereNotIn('note', [
+                    'Call initiated from lead index; outcome pending.',
+                    'Call initiated from lead panel.',
+                ]);
+        });
+
+        $summaryQuery = clone $baseQuery;
+        if ($request->filled('action_type')) {
+            if ($request->action_type === 'call') $summaryQuery->where('call_count', '>', 0);
+            else $summaryQuery->where('action_type', $request->action_type);
+        }
+
         /*
         |--------------------------------------------------------------------------
         | TOTAL ACTIONS
@@ -6431,8 +6456,8 @@ class LeadController extends Controller
         */
 
         $totalActions =
-            (clone $baseQuery)
-                ->count();
+            (clone $summaryQuery)
+            ->count();
 
 
         /*
@@ -6442,39 +6467,39 @@ class LeadController extends Controller
         */
 
         $contactedActions =
-            (clone $baseQuery)
-                ->where(
-                    'action_type',
-                    'contacted'
-                )
-                ->count();
+            (clone $summaryQuery)
+            ->where(
+                'action_type',
+                'contacted'
+            )
+            ->count();
 
 
         $followUpActions =
-            (clone $baseQuery)
-                ->where(
-                    'action_type',
-                    'follow_up'
-                )
-                ->count();
+            (clone $summaryQuery)
+            ->where(
+                'action_type',
+                'follow_up'
+            )
+            ->count();
 
 
         $quotationActions =
-            (clone $baseQuery)
-                ->where(
-                    'action_type',
-                    'quotation_shared'
-                )
-                ->count();
+            (clone $summaryQuery)
+            ->where(
+                'action_type',
+                'quotation_shared'
+            )
+            ->count();
 
 
         $dealClosedActions =
-            (clone $baseQuery)
-                ->where(
-                    'action_type',
-                    'deal_close'
-                )
-                ->count();
+            (clone $summaryQuery)
+            ->where(
+                'action_type',
+                'deal_close'
+            )
+            ->count();
 
 
         /*
@@ -6491,10 +6516,10 @@ class LeadController extends Controller
         */
 
         $callActions =
-            (clone $baseQuery)
-                ->sum(
-                    'call_count'
-                );
+            (clone $callCountBase)
+            ->sum(
+                'call_count'
+            );
 
 
         /*
@@ -6504,12 +6529,12 @@ class LeadController extends Controller
         */
 
         $whatsappActions =
-            (clone $baseQuery)
-                ->where(
-                    'action_type',
-                    'whatsapp'
-                )
-                ->count();
+            (clone $summaryQuery)
+            ->where(
+                'action_type',
+                'whatsapp'
+            )
+            ->count();
 
 
         /*
@@ -6519,17 +6544,17 @@ class LeadController extends Controller
         */
 
         $callCountsByLead =
-            (clone $baseQuery)
-                ->selectRaw(
-                    'lead_id, SUM(call_count) as total'
-                )
-                ->groupBy(
-                    'lead_id'
-                )
-                ->pluck(
-                    'total',
-                    'lead_id'
-                );
+            (clone $callCountBase)
+            ->selectRaw(
+                'lead_id, SUM(call_count) as total'
+            )
+            ->groupBy(
+                'lead_id'
+            )
+            ->pluck(
+                'total',
+                'lead_id'
+            );
 
 
         /*
@@ -6540,16 +6565,16 @@ class LeadController extends Controller
 
         $actionCounts =
             (clone $baseQuery)
-                ->selectRaw(
-                    'action_type, COUNT(*) as total'
-                )
-                ->groupBy(
-                    'action_type'
-                )
-                ->pluck(
-                    'total',
-                    'action_type'
-                );
+            ->selectRaw(
+                'action_type, COUNT(*) as total'
+            )
+            ->groupBy(
+                'action_type'
+            )
+            ->pluck(
+                'total',
+                'action_type'
+            );
 
 
         /*
@@ -6560,7 +6585,7 @@ class LeadController extends Controller
 
         $actionCounts->put(
             'call',
-            (int) $callActions
+            (int) (clone $callCountBase)->sum('call_count')
         );
 
 
@@ -6597,37 +6622,37 @@ class LeadController extends Controller
                         "%{$search}%"
                     )
 
-                    ->orWhere(
-                        'action_type',
-                        'like',
-                        "%{$search}%"
-                    )
+                        ->orWhere(
+                            'action_type',
+                            'like',
+                            "%{$search}%"
+                        )
 
-                    ->orWhere(
-                        'note',
-                        'like',
-                        "%{$search}%"
-                    )
+                        ->orWhere(
+                            'note',
+                            'like',
+                            "%{$search}%"
+                        )
 
-                    ->orWhereHas(
-                        'lead',
-                        function ($leadQuery)
-                        use ($search) {
+                        ->orWhereHas(
+                            'lead',
+                            function ($leadQuery)
+                            use ($search) {
 
-                            $leadQuery
-                                ->where(
-                                    'name',
-                                    'like',
-                                    "%{$search}%"
-                                )
+                                $leadQuery
+                                    ->where(
+                                        'name',
+                                        'like',
+                                        "%{$search}%"
+                                    )
 
-                                ->orWhere(
-                                    'phone',
-                                    'like',
-                                    "%{$search}%"
-                                );
+                                    ->orWhere(
+                                        'phone',
+                                        'like',
+                                        "%{$search}%"
+                                    );
 
-                            /*
+                                /*
                             * If your leads table has
                             * a "requirement" column,
                             * uncomment this:
@@ -6638,21 +6663,21 @@ class LeadController extends Controller
                             *     "%{$search}%"
                             * )
                             */
-                        }
-                    )
+                            }
+                        )
 
-                    ->orWhereHas(
-                        'user',
-                        function ($userQuery)
-                        use ($search) {
+                        ->orWhereHas(
+                            'user',
+                            function ($userQuery)
+                            use ($search) {
 
-                            $userQuery->where(
-                                'name',
-                                'like',
-                                "%{$search}%"
-                            );
-                        }
-                    );
+                                $userQuery->where(
+                                    'name',
+                                    'like',
+                                    "%{$search}%"
+                                );
+                            }
+                        );
                 }
             );
         }
@@ -6687,7 +6712,6 @@ class LeadController extends Controller
                     '>',
                     0
                 );
-
             } else {
 
                 $query->where(
@@ -6764,21 +6788,21 @@ class LeadController extends Controller
 
         $actions =
             $query
-                ->with([
-                    'lead',
-                    'user',
-                    'quotation',
-                ])
-                ->orderByDesc(
-                    'action_at'
-                )
-                ->orderByDesc(
-                    'id'
-                )
-                ->paginate(
-                    30
-                )
-                ->withQueryString();
+            ->with([
+                'lead',
+                'user',
+                'quotation',
+            ])
+            ->orderByDesc(
+                'action_at'
+            )
+            ->orderByDesc(
+                'id'
+            )
+            ->paginate(
+                30
+            )
+            ->withQueryString();
 
 
         /*
@@ -6788,18 +6812,10 @@ class LeadController extends Controller
         */
 
         if ($user->hasRole('Admin')) {
-
-            $salesUsers =
-                User::role('Sales')
-                    ->orderBy(
-                        'name'
-                    )
-                    ->get();
-
+            $salesUsers = User::role('Sales')->where('status', 'active')->orderBy('name')->get();
         } else {
-
-            $salesUsers =
-                collect();
+            $salesUsers = User::role('Sales')->where('status', 'active')
+                ->where('branch_id', $user->branch_id)->orderBy('name')->get();
         }
 
 
@@ -6808,6 +6824,25 @@ class LeadController extends Controller
         | RETURN VIEW
         |--------------------------------------------------------------------------
         */
+
+        $transfersQuery = DB::table('lead_transfers as lt')
+            ->join('leads as l', 'l.id', '=', 'lt.lead_id')
+            ->leftJoin('users as old_user', 'old_user.id', '=', 'lt.from_user_id')
+            ->join('users as new_user', 'new_user.id', '=', 'lt.to_user_id')
+            ->join('users as actor_user', 'actor_user.id', '=', 'lt.transferred_by')
+            ->select(
+                'lt.*',
+                'l.name as lead_name',
+                'old_user.name as old_name',
+                'new_user.name as new_name',
+                'actor_user.name as actor_name'
+            );
+        if (!$user->hasRole('Admin')) $transfersQuery->where('l.user_id', $user->id);
+        if ($request->filled('user_id') && $user->hasRole('Admin')) $transfersQuery->where('lt.transferred_by', $request->user_id);
+        if ($request->filled('from_date')) $transfersQuery->whereDate('lt.created_at', '>=', $request->from_date);
+        if ($request->filled('to_date')) $transfersQuery->whereDate('lt.created_at', '<=', $request->to_date);
+        if ($request->filled('search')) $transfersQuery->where('l.name', 'like', '%' . trim($request->search) . '%');
+        $transferHistory = $transfersQuery->orderByDesc('lt.id')->limit(100)->get();
 
         return view(
             'admin.leads.actions.index',
@@ -6822,13 +6857,14 @@ class LeadController extends Controller
                 'quotationActions',
                 'dealClosedActions',
                 'actionCounts',
-                'callCountsByLead'
+                'callCountsByLead',
+                'transferHistory'
             )
         );
     }
 
 
-    public function updateLeadActionType(Request $request, $id) 
+    public function updateLeadActionType(Request $request, $id)
     {
         /*
         |--------------------------------------------------------------------------
@@ -6838,7 +6874,7 @@ class LeadController extends Controller
 
         $request->validate([
             'action_type' =>
-                'required|string|max:50',
+            'required|string|max:50',
         ]);
 
 
@@ -6860,7 +6896,7 @@ class LeadController extends Controller
 
         $action =
             LeadAction::with('lead')
-                ->findOrFail($id);
+            ->findOrFail($id);
 
 
         /*
@@ -6874,13 +6910,13 @@ class LeadController extends Controller
             (
                 !$action->lead ||
                 (int) $action->lead->user_id !==
-                    (int) $user->id
+                (int) $user->id
             )
         ) {
             return response()->json([
                 'status' => false,
                 'message' =>
-                    'You are not allowed to update this lead action.',
+                'You are not allowed to update this lead action.',
             ], 403);
         }
 
@@ -6893,25 +6929,25 @@ class LeadController extends Controller
 
         $allowedActions = [
             'follow_up' =>
-                'Follow Up',
+            'Follow Up',
 
             'deal_close' =>
-                'Deal Close',
+            'Deal Close',
 
             'not_interested' =>
-                'Not Interested',
+            'Not Interested',
 
             'not_contactable' =>
-                'Not Contactable',
+            'Not Contactable',
 
             'wrong_category' =>
-                'Wrong Category',
+            'Wrong Category',
 
             'out_of_area' =>
-                'Out of Area',
+            'Out of Area',
 
             'marketing_job' =>
-                'Marketing / Job',
+            'Marketing / Job',
         ];
 
 
@@ -6928,7 +6964,7 @@ class LeadController extends Controller
             return response()->json([
                 'status' => false,
                 'message' =>
-                    'Invalid lead action.',
+                'Invalid lead action.',
             ], 422);
         }
 
@@ -6956,9 +6992,7 @@ class LeadController extends Controller
             $request->action_type;
 
         $action->action_label =
-            $allowedActions[
-                $request->action_type
-            ];
+            $allowedActions[$request->action_type];
 
         $action->user_id =
             $user->id;
@@ -7000,9 +7034,7 @@ class LeadController extends Controller
 
         if ($lead) {
 
-            switch (
-                $request->action_type
-            ) {
+            switch ($request->action_type) {
 
                 case 'deal_close':
 
@@ -7069,35 +7101,79 @@ class LeadController extends Controller
             'status' => true,
 
             'message' =>
-                'Lead action updated successfully.',
+            'Lead action updated successfully.',
 
             'call_count' =>
-                (int) $totalCallCount,
+            (int) $totalCallCount,
 
             'action' => [
                 'id' =>
-                    $action->id,
+                $action->id,
 
                 'type' =>
-                    $action->action_type,
+                $action->action_type,
 
                 'label' =>
-                    $action->action_label,
+                $action->action_label,
 
                 'user' =>
-                    $user->name,
+                $user->name,
 
                 'time' =>
-                    optional(
-                        $action->action_at
-                    )->format(
-                        'd M Y, h:i A'
-                    ),
+                optional(
+                    $action->action_at
+                )->format(
+                    'd M Y, h:i A'
+                ),
             ],
 
             'lead_status' =>
-                $lead->status ?? null,
+            $lead->status ?? null,
         ]);
+    }
+
+    /** Transfer is allowed to the current owner or an admin, and logged in both histories. */
+    private function recordTransfer(Lead $lead, int $toUserId, string $source, string $reason = ''): void
+    {
+        $actor = auth()->user();
+        abort_unless($actor->hasRole('Admin') || (int) $lead->user_id === (int) $actor->id, 403);
+        $to = User::findOrFail($toUserId);
+        if (!$to->hasRole('Sales') || $to->status !== 'active') {
+            throw \Illuminate\Validation\ValidationException::withMessages(['user_id' => 'Choose an active Sales user.']);
+        }
+        if (!$actor->hasRole('Admin') && (int) $actor->branch_id !== (int) $to->branch_id) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['user_id' => 'Select a Sales user in your branch.']);
+        }
+        if ((int) $lead->user_id === (int) $to->id) return;
+
+        $previous = $lead->user_id;
+        $lead->user_id = $to->id;
+        $lead->save();
+        DB::table('lead_transfers')->insert([
+            'lead_id' => $lead->id,
+            'from_user_id' => $previous,
+            'to_user_id' => $to->id,
+            'transferred_by' => $actor->id,
+            'source' => $source,
+            'reason' => $reason ?: null,
+            'created_at' => now(),
+        ]);
+    }
+
+    public function transfer(Request $request, $id)
+    {
+        $data = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'reason' => 'required|string|max:2000',
+        ]);
+        $lead = DB::transaction(function () use ($id, $data) {
+            $lead = Lead::whereKey($id)->lockForUpdate()->firstOrFail();
+            $this->recordTransfer($lead, (int) $data['user_id'], 'lead_actions', $data['reason']);
+            return $lead;
+        });
+        return $request->expectsJson()
+            ? response()->json(['status' => true, 'assigned_user_id' => $lead->user_id])
+            : back()->with('success_message', 'Lead transferred successfully.');
     }
 
     public function storeFollowUp(Request $request, $id)
@@ -7112,6 +7188,7 @@ class LeadController extends Controller
             'call_schedule' => 'required|date',
             'remarks'       => 'nullable|string|max:2000',
             'user_id'       => 'nullable|integer|exists:users,id',
+            'follow_up_priority' => 'required|in:hot,warm,cold',
         ]);
 
 
@@ -7153,12 +7230,12 @@ class LeadController extends Controller
         |
         */
 
-        if (
-            $user->hasRole('Admin') &&
-            $request->filled('user_id')
-        ) {
-            $lead->user_id = $request->user_id;
-        }
+        DB::transaction(function () use ($lead, $request) {
+            $lead->refresh();
+            if ($request->filled('user_id') && (int) $request->user_id !== (int) $lead->user_id) {
+                $this->recordTransfer($lead, (int) $request->user_id, 'follow_up', (string) $request->remarks);
+            }
+        });
 
 
         /*
@@ -7173,7 +7250,13 @@ class LeadController extends Controller
         |
         */
 
+        $wasPendingCall = (bool) $lead->pending_call_action;
+        if ($wasPendingCall) {
+            $lead->pending_call_action = false;
+        }
+
         $lead->status = 'call';
+        $lead->follow_up_priority = $request->follow_up_priority;
 
         $lead->call_schedule =
             $request->call_schedule;
@@ -7198,38 +7281,39 @@ class LeadController extends Controller
 
         $action = LeadAction::create([
             'lead_id' =>
-                $lead->id,
+            $lead->id,
 
             'user_id' =>
-                $user->id,
+            $user->id,
 
             'action_type' =>
-                'follow_up',
+            'follow_up',
 
             'action_label' =>
-                'Follow Up',
+            'Follow Up',
 
             'call_count' =>
-                0,
+            $wasPendingCall ? 1 : 0,
 
             'note' =>
-                $request->filled('remarks')
-                    ? $request->remarks
-                    : 'Follow up scheduled.',
+            $request->filled('remarks')
+                ? $request->remarks
+                : 'Follow up scheduled.',
 
             'quotation_id' =>
-                null,
+            null,
 
             'meta' => [
                 'call_schedule' =>
-                    $request->call_schedule,
+                $request->call_schedule,
 
                 'assigned_user_id' =>
-                    $lead->user_id,
+                $lead->user_id,
+                'follow_up_priority' => $request->follow_up_priority,
             ],
 
             'action_at' =>
-                now(),
+            now(),
         ]);
 
 
@@ -7243,23 +7327,23 @@ class LeadController extends Controller
             'status' => true,
 
             'message' =>
-                'Follow up scheduled successfully.',
+            'Follow up scheduled successfully.',
 
             'lead_status' =>
-                $lead->status,
+            $lead->status,
 
             'call_schedule' =>
-                $lead->call_schedule,
+            $lead->call_schedule,
 
             'action' => [
                 'id' =>
-                    $action->id,
+                $action->id,
 
                 'type' =>
-                    $action->action_type,
+                $action->action_type,
 
                 'label' =>
-                    $action->action_label,
+                $action->action_label,
             ],
         ]);
     }
@@ -7310,7 +7394,7 @@ class LeadController extends Controller
             return response()->json([
                 'status' => false,
                 'message' =>
-                    'You are not allowed to access this lead.',
+                'You are not allowed to access this lead.',
             ], 403);
         }
 
@@ -7355,12 +7439,12 @@ class LeadController extends Controller
                 'quotation_type' => 'detailed',
 
                 'create_date' =>
-                    now()->toDateString(),
+                now()->toDateString(),
 
                 'due_date' => null,
 
                 'note' =>
-                    'Detailed Quotation: ' .
+                'Detailed Quotation: ' .
                     $detailedQuotation->name,
 
                 'terms_condition' => null,
@@ -7374,7 +7458,7 @@ class LeadController extends Controller
                 'payment_currency' => 1,
 
                 'sales_credit' =>
-                    $lead->user_id,
+                $lead->user_id,
 
             ]);
 
@@ -7394,7 +7478,7 @@ class LeadController extends Controller
             QuotationItem::create([
 
                 'quotation_id' =>
-                    $quotation->id,
+                $quotation->id,
 
                 /*
                 * 0 = custom item
@@ -7402,7 +7486,7 @@ class LeadController extends Controller
                 'description' => 0,
 
                 'custom_description' =>
-                    $detailedQuotation->name,
+                $detailedQuotation->name,
 
                 'quantity' => 1,
 
@@ -7449,7 +7533,7 @@ class LeadController extends Controller
 
                     [
                         'quotation' =>
-                            $detailedQuotation->id,
+                        $detailedQuotation->id,
                     ]
 
                 );
@@ -7471,16 +7555,16 @@ class LeadController extends Controller
             $action = LeadAction::create([
 
                 'lead_id' =>
-                    $lead->id,
+                $lead->id,
 
                 'user_id' =>
-                    $user->id,
+                $user->id,
 
                 'action_type' =>
-                    'quotation_shared',
+                'quotation_shared',
 
                 'action_label' =>
-                    'Detailed Quotation Shared',
+                'Detailed Quotation Shared',
 
                 'call_count' => 0,
 
@@ -7488,10 +7572,10 @@ class LeadController extends Controller
                 * Normal quotation FK.
                 */
                 'quotation_id' =>
-                    $quotation->id,
+                $quotation->id,
 
                 'note' =>
-                    'Detailed quotation ' .
+                'Detailed quotation ' .
                     $quotationNumber .
                     ' shared on WhatsApp: ' .
                     $detailedQuotation->name,
@@ -7502,38 +7586,38 @@ class LeadController extends Controller
                     * Normal quotation details
                     */
                     'quotation_number' =>
-                        $quotationNumber,
+                    $quotationNumber,
 
                     'quotation_id' =>
-                        $quotation->id,
+                    $quotation->id,
 
 
                     /*
                     * Detailed quotation master reference
                     */
                     'quotation_source' =>
-                        'detailed_quotation',
+                    'detailed_quotation',
 
                     'detailed_quotation_id' =>
-                        $detailedQuotation->id,
+                    $detailedQuotation->id,
 
                     'detailed_quotation_name' =>
-                        $detailedQuotation->name,
+                    $detailedQuotation->name,
 
 
                     /*
                     * Sharing information
                     */
                     'channel' =>
-                        'whatsapp',
+                    'whatsapp',
 
                     'pdf_url' =>
-                        $pdfUrl,
+                    $pdfUrl,
 
                 ],
 
                 'action_at' =>
-                    now(),
+                now(),
 
             ]);
 
@@ -7551,10 +7635,10 @@ class LeadController extends Controller
             */
 
             $lead->status = 'detailed-quotation';
+            $lead->pending_call_action = false;
 
             // Move linked lead to Quotation Sent
-            $lead->stage = 'Proposal Sent';
-
+            $this->movePipelineStage('lead', $lead, 'Proposal Sent');
             $lead->save();
 
             DB::commit();
@@ -7571,34 +7655,34 @@ class LeadController extends Controller
                 'status' => true,
 
                 'message' =>
-                    'Detailed quotation saved and added to Lead Actions.',
+                'Detailed quotation saved and added to Lead Actions.',
 
 
                 /*
                 * Normal quotation
                 */
                 'quotation_id' =>
-                    $quotation->id,
+                $quotation->id,
 
                 'quotation_no' =>
-                    $quotationNumber,
+                $quotationNumber,
 
 
                 /*
                 * Detailed quotation
                 */
                 'detailed_quotation_id' =>
-                    $detailedQuotation->id,
+                $detailedQuotation->id,
 
                 'quotation_name' =>
-                    $detailedQuotation->name,
+                $detailedQuotation->name,
 
 
                 /*
                 * WhatsApp PDF link
                 */
                 'pdf_url' =>
-                    $pdfUrl,
+                $pdfUrl,
 
 
                 /*
@@ -7607,19 +7691,17 @@ class LeadController extends Controller
                 'action' => [
 
                     'id' =>
-                        $action->id,
+                    $action->id,
 
                     'type' =>
-                        $action->action_type,
+                    $action->action_type,
 
                     'label' =>
-                        $action->action_label,
+                    $action->action_label,
 
                 ],
 
             ]);
-
-
         } catch (\Throwable $e) {
 
             DB::rollBack();
@@ -7631,7 +7713,7 @@ class LeadController extends Controller
                 'status' => false,
 
                 'message' =>
-                    $e->getMessage(),
+                $e->getMessage(),
 
             ], 500);
         }
@@ -7678,7 +7760,7 @@ class LeadController extends Controller
             return response()->json([
                 'status' => false,
                 'message' =>
-                    'No authorized leads found for deletion.',
+                'No authorized leads found for deletion.',
             ], 403);
         }
 
@@ -7699,11 +7781,11 @@ class LeadController extends Controller
         return response()->json([
             'status' => true,
             'message' =>
-                $deletedCount .
+            $deletedCount .
                 ' lead(s) deleted successfully.',
 
             'deleted_count' =>
-                $deletedCount,
+            $deletedCount,
         ]);
     }
 
@@ -7717,28 +7799,28 @@ class LeadController extends Controller
             'items' => 'required|array|min:1',
 
             'items.*.product_id' =>
-                'nullable|exists:products,id',
+            'nullable|exists:products,id',
 
             'items.*.custom_description' =>
-                'nullable|string|max:255',
+            'nullable|string|max:255',
 
             'items.*.hsn_code' =>
-                'required|string|max:50',
+            'required|string|max:50',
 
             'items.*.quantity' =>
-                'required|numeric|min:1',
+            'required|numeric|min:1',
 
             'items.*.unit_price' =>
-                'required|numeric|min:0',
+            'required|numeric|min:0',
 
             'discount' =>
-                'nullable|numeric|min:0|max:100',
+            'nullable|numeric|min:0|max:100',
 
             'vat' =>
-                'nullable|numeric|min:0|max:100',
+            'nullable|numeric|min:0|max:100',
 
             'note' =>
-                'nullable|string|max:2000',
+            'nullable|string|max:2000',
         ]);
 
 
@@ -7762,7 +7844,7 @@ class LeadController extends Controller
             return response()->json([
                 'status' => false,
                 'message' =>
-                    'You are not allowed to create proforma for this lead.',
+                'You are not allowed to create proforma for this lead.',
             ], 403);
         }
 
@@ -7786,7 +7868,7 @@ class LeadController extends Controller
             return response()->json([
                 'status' => false,
                 'message' =>
-                    'Branch is not available for this lead.',
+                'Branch is not available for this lead.',
             ], 422);
         }
 
@@ -7815,7 +7897,7 @@ class LeadController extends Controller
                 return response()->json([
                     'status' => false,
                     'message' =>
-                        'Please select a product or enter a custom product/service.',
+                    'Please select a product or enter a custom product/service.',
                 ], 422);
             }
         }
@@ -7902,8 +7984,8 @@ class LeadController extends Controller
 
             $nextId =
                 $lastProforma
-                    ? $lastProforma->id + 1
-                    : 1;
+                ? $lastProforma->id + 1
+                : 1;
 
 
             $proformaNo =
@@ -7930,45 +8012,45 @@ class LeadController extends Controller
             $proforma = Proforma::create([
 
                 'proforma_no' =>
-                    $proformaNo,
+                $proformaNo,
 
-                 'customer_id' => null,
+                'customer_id' => null,
 
                 'proforma_date' =>
-                    now()->toDateString(),
+                now()->toDateString(),
 
                 'subtotal' =>
-                    round(
-                        $afterDiscount,
-                        2
-                    ),
+                round(
+                    $afterDiscount,
+                    2
+                ),
 
                 'tax' =>
-                    round(
-                        $gstAmount,
-                        2
-                    ),
+                round(
+                    $gstAmount,
+                    2
+                ),
 
                 'total' =>
-                    round(
-                        $grandTotal,
-                        2
-                    ),
+                round(
+                    $grandTotal,
+                    2
+                ),
 
                 'status' =>
-                    'proforma',
+                'proforma',
 
                 'stage' =>
-                    'Send Proforma',
+                'Send Proforma',
 
                 'notes' =>
-                    $request->note,
+                $request->note,
 
                 'branch_id' =>
-                    $lead->branch_id,
+                $lead->branch_id,
 
                 'lead_id' =>
-                    $lead->id,
+                $lead->id,
             ]);
 
 
@@ -8020,33 +8102,33 @@ class LeadController extends Controller
                 ProformaItem::create([
 
                     'proforma_id' =>
-                        $proforma->id,
+                    $proforma->id,
 
                     'product_id' =>
-                        $productId,
+                    $productId,
 
                     'custom_description' =>
-                        $customDescription !== ''
-                            ? $customDescription
-                            : null,
+                    $customDescription !== ''
+                        ? $customDescription
+                        : null,
 
                     'price' =>
-                        $unitPrice,
+                    $unitPrice,
 
                     'quantity' =>
-                        $quantity,
+                    $quantity,
 
                     'hsn_code' =>
-                        $hsnCode,
+                    $hsnCode,
 
                     'gst' =>
-                        $gstPercent,
+                    $gstPercent,
 
                     'line_total' =>
-                        round(
-                            $lineAmount + $itemTax,
-                            2
-                        ),
+                    round(
+                        $lineAmount + $itemTax,
+                        2
+                    ),
                 ]);
             }
 
@@ -8060,69 +8142,69 @@ class LeadController extends Controller
             LeadAction::create([
 
                 'lead_id' =>
-                    $lead->id,
+                $lead->id,
 
                 'user_id' =>
-                    $user->id,
+                $user->id,
 
                 'action_type' =>
-                    'proforma_shared',
+                'proforma_shared',
 
                 'action_label' =>
-                    'Proforma Created',
+                'Proforma Created',
 
                 /*
                 * Ye quotation nahi hai.
                 */
                 'quotation_id' =>
-                    null,
+                null,
 
                 'note' =>
-                    'Proforma ' .
+                'Proforma ' .
                     $proformaNo .
                     ' created for this lead.',
 
                 'meta' => [
 
                     'proforma_id' =>
-                        $proforma->id,
+                    $proforma->id,
 
                     'proforma_number' =>
-                        $proformaNo,
+                    $proformaNo,
 
                     'subtotal' =>
-                        round($subtotal, 2),
+                    round($subtotal, 2),
 
                     'discount' =>
-                        $discountPercent,
+                    $discountPercent,
 
                     'discount_amount' =>
-                        round(
-                            $discountAmount,
-                            2
-                        ),
+                    round(
+                        $discountAmount,
+                        2
+                    ),
 
                     'gst' =>
-                        $gstPercent,
+                    $gstPercent,
 
                     'gst_amount' =>
-                        round(
-                            $gstAmount,
-                            2
-                        ),
+                    round(
+                        $gstAmount,
+                        2
+                    ),
 
                     'total' =>
-                        round(
-                            $grandTotal,
-                            2
-                        ),
+                    round(
+                        $grandTotal,
+                        2
+                    ),
 
                     'stage' =>
-                        'Send Proforma',
+                    'Send Proforma',
                 ],
 
                 'action_at' =>
-                    now(),
+                now(),
             ]);
 
 
@@ -8138,6 +8220,7 @@ class LeadController extends Controller
 
             $lead->status =
                 'quick-quotation';
+            $lead->pending_call_action = false;
 
             $lead->save();
 
@@ -8154,45 +8237,44 @@ class LeadController extends Controller
             return response()->json([
 
                 'status' =>
-                    true,
+                true,
 
                 'message' =>
-                    'Proforma created successfully.',
+                'Proforma created successfully.',
 
                 'proforma_id' =>
-                    $proforma->id,
+                $proforma->id,
 
                 'proforma_no' =>
-                    $proforma->proforma_no,
+                $proforma->proforma_no,
 
                 'stage' =>
-                    $proforma->stage,
+                $proforma->stage,
 
                 'subtotal' =>
-                    round(
-                        $subtotal,
-                        2
-                    ),
+                round(
+                    $subtotal,
+                    2
+                ),
 
                 'discount_amount' =>
-                    round(
-                        $discountAmount,
-                        2
-                    ),
+                round(
+                    $discountAmount,
+                    2
+                ),
 
                 'vat_amount' =>
-                    round(
-                        $gstAmount,
-                        2
-                    ),
+                round(
+                    $gstAmount,
+                    2
+                ),
 
                 'total_amount' =>
-                    round(
-                        $grandTotal,
-                        2
-                    ),
+                round(
+                    $grandTotal,
+                    2
+                ),
             ]);
-
         } catch (\Throwable $e) {
 
             DB::rollBack();
@@ -8345,13 +8427,87 @@ class LeadController extends Controller
     //     );
     // }
 
-     public function salespipeline()
+    private function pipelineStageNames()
     {
-       
+        return [
+            'New Lead',
+            'Meeting',
+            'Proposal Pending',
+            'Proforma Pending',
+            'Send Proforma',
+            'Proposal Sent',
+            'Negotiation',
+            'Payment Waiting',
+            'Won',
+            'Lost',
+        ];
+    }
+
+    private function visiblePipelineStages($user)
+    {
+        $stages = $this->pipelineStageNames();
+
+        if ($user->hasRole('Admin') || !$user->hasRole('Sales')) {
+            return $stages;
+        }
+
+        $configured = DB::table('sales_pipeline_stage_permissions')
+            ->where('user_id', $user->id)
+            ->get(['stage', 'is_allowed']);
+
+        // An untouched Sales account sees every stage.
+        if ($configured->isEmpty()) {
+            return $stages;
+        }
+
+        return $configured->where('is_allowed', 1)
+            ->pluck('stage')
+            ->intersect($stages)
+            ->values()
+            ->all();
+    }
+
+    public function savePipelineStageAccess(Request $request)
+    {
+        abort_unless(auth()->user()->hasRole('Admin'), 403);
+
+        $data = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'stages' => ['nullable', 'array'],
+            'stages.*' => ['string', \Illuminate\Validation\Rule::in($this->pipelineStageNames())],
+        ]);
+
+        $salesperson = User::findOrFail($data['user_id']);
+        abort_unless($salesperson->hasRole('Sales'), 422, 'Select a Sales user.');
+
+        $selected = $data['stages'] ?? [];
+
+        DB::transaction(function () use ($salesperson, $selected) {
+            DB::table('sales_pipeline_stage_permissions')
+                ->where('user_id', $salesperson->id)
+                ->delete();
+
+            foreach ($this->pipelineStageNames() as $stage) {
+                DB::table('sales_pipeline_stage_permissions')->insert([
+                    'user_id' => $salesperson->id,
+                    'stage' => $stage,
+                    'is_allowed' => in_array($stage, $selected, true) ? 1 : 0,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        });
+
+        return back()->with('success_message', 'Pipeline stage visibility saved.');
+    }
+
+    public function salespipeline()
+    {
+
 
         $stages = [
             'New Lead',
-            'Contacted',
+            'Meeting',
             'Proposal Pending',
             'Proforma Pending',
             'Send Proforma',
@@ -8364,11 +8520,11 @@ class LeadController extends Controller
 
         // Send Proforma Lead ka stored stage nahi hai.
         // Lead par ye special action/modal trigger hai.
-      
+
 
         $leadDbStages = [
             'New Lead',
-            'Contacted',
+            'Meeting',
             'Proposal Pending',
             'Proforma Pending',
             'Proposal Sent',
@@ -8379,6 +8535,7 @@ class LeadController extends Controller
         ];
 
         $user = auth()->user();
+        $visibleStageNames = $this->visiblePipelineStages($user);
 
 
         // --------------------------------------------------------
@@ -8387,7 +8544,7 @@ class LeadController extends Controller
 
         $leadQuery = Lead::with('userlead')
             ->where('status', 'accept')
-            ->whereIn('stage', $leadDbStages);
+            ->whereIn('stage', array_intersect($leadDbStages, $visibleStageNames));
 
         if ($user->hasRole('Admin')) {
             // Admin sees all.
@@ -8412,7 +8569,7 @@ class LeadController extends Controller
             'items',
         ])
             ->whereNotNull('lead_id')
-            ->whereIn('stage', $stages);
+            ->whereIn('stage', $visibleStageNames);
 
         if ($user->hasRole('Admin')) {
             // Admin sees all.
@@ -8446,8 +8603,8 @@ class LeadController extends Controller
             'items',
         ])
             ->whereNotNull('lead_id')
-            ->whereHas('lead', function ($query) use ($leadDbStages) {
-                $query->whereIn('stage', $leadDbStages);
+            ->whereHas('lead', function ($query) use ($leadDbStages, $visibleStageNames) {
+                $query->whereIn('stage', array_intersect($leadDbStages, $visibleStageNames));
             });
 
         if ($user->hasRole('Admin')) {
@@ -8470,6 +8627,38 @@ class LeadController extends Controller
             ->latest()
             ->get();
 
+        // Quotations use their linked lead's stage; proformas have their own stage.
+        $meetingLeadIds = $leads->pluck('id')->merge($quotations->pluck('lead_id'))->unique()->values();
+        $meetingSchedules = DB::table('pipeline_meetings')
+            ->where(function ($query) use ($meetingLeadIds, $proformas) {
+                $query->where(function ($q) use ($meetingLeadIds) {
+                    $q->where('entity_type', 'lead')->whereIn('entity_id', $meetingLeadIds);
+                })->orWhere(function ($q) use ($proformas) {
+                    $q->where('entity_type', 'proforma')->whereIn('entity_id', $proformas->pluck('id'));
+                });
+            })
+            ->get(['entity_type', 'entity_id', 'meeting_at'])
+            ->keyBy(fn($meeting) => $meeting->entity_type . ':' . $meeting->entity_id);
+
+
+        $salesPeople = collect();
+        $stageAccess = [];
+
+        if ($user->hasRole('Admin')) {
+            $salesPeople = User::role('Sales')
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get(['id', 'name', 'last_name', 'email']);
+
+            $stageAccess = DB::table('sales_pipeline_stage_permissions')
+                ->whereIn('user_id', $salesPeople->pluck('id'))
+                ->get(['user_id', 'stage', 'is_allowed'])
+                ->groupBy('user_id')
+                ->map(function ($rows) {
+                    return $rows->where('is_allowed', 1)->pluck('stage')->all();
+                })
+                ->all();
+        }
 
         return view(
             'admin.leads.salespipeline',
@@ -8477,7 +8666,11 @@ class LeadController extends Controller
                 'stages',
                 'leads',
                 'proformas',
-                'quotations'
+                'quotations',
+                'visibleStageNames',
+                'salesPeople',
+                'stageAccess',
+                'meetingSchedules'
             )
         );
     }
@@ -8487,14 +8680,102 @@ class LeadController extends Controller
     // UPDATE LEAD STAGE
     // ============================================================
 
+    /** Keep the original entry date when a record revisits a stage. */
+    private function movePipelineStage($type, $record, $newStage)
+    {
+        if ($record->stage === $newStage) {
+            return;
+        }
+
+        $identity = ['entity_type' => $type, 'entity_id' => $record->id];
+
+        // The New Lead clock is always anchored to the lead's creation.
+        if ($type === 'lead' && $record->created_at) {
+            DB::table('pipeline_stage_entries')->insertOrIgnore(array_merge($identity, [
+                'stage' => 'New Lead',
+                'first_entered_at' => $record->created_at,
+            ]));
+        }
+
+        $previousDate = $type === 'lead' && $record->stage === 'New Lead'
+            ? $record->created_at
+            : $record->stage_entered_at;
+
+        if ($record->stage && $previousDate) {
+            DB::table('pipeline_stage_entries')->insertOrIgnore(array_merge($identity, [
+                'stage' => $record->stage,
+                'first_entered_at' => $previousDate,
+            ]));
+        }
+
+        $firstEntry = DB::table('pipeline_stage_entries')
+            ->where($identity)
+            ->where('stage', $newStage)
+            ->value('first_entered_at');
+
+        if (!$firstEntry) {
+            $firstEntry = $type === 'lead' && $newStage === 'New Lead'
+                ? $record->created_at
+                : now();
+
+            DB::table('pipeline_stage_entries')->insertOrIgnore(array_merge($identity, [
+                'stage' => $newStage,
+                'first_entered_at' => $firstEntry,
+            ]));
+
+            $firstEntry = DB::table('pipeline_stage_entries')
+                ->where($identity)
+                ->where('stage', $newStage)
+                ->value('first_entered_at');
+        }
+
+        $record->stage = $newStage;
+        $record->stage_entered_at = $firstEntry;
+    }
+
+    private function meetingAtForStage(Request $request): ?Carbon
+    {
+        if ($request->stage !== 'Meeting') {
+            return null;
+        }
+
+        $request->validate([
+            'meeting_at' => ['required', 'date_format:Y-m-d H:i'],
+        ]);
+
+        $meetingAt = Carbon::createFromFormat('Y-m-d H:i', $request->meeting_at, 'Asia/Kolkata');
+        if ($meetingAt->lte(Carbon::now('Asia/Kolkata'))) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'meeting_at' => 'Select a future meeting date and time.',
+            ]);
+        }
+
+        return $meetingAt;
+    }
+
+    private function savePipelineMeeting(string $type, int $id, Carbon $meetingAt): void
+    {
+        DB::table('pipeline_meetings')->updateOrInsert(
+            ['entity_type' => $type, 'entity_id' => $id],
+            [
+                'meeting_at' => $meetingAt->format('Y-m-d H:i:s'),
+                'updated_by' => auth()->id(),
+                'updated_at' => now(),
+            ]
+        );
+    }
+
     public function updateStage(Request $request, $id)
     {
         $request->validate([
             'stage' => [
                 'required',
                 'string',
-                'in:New Lead,Contacted,Proposal Pending,Proforma Pending,Proposal Sent,Negotiation,Payment Waiting,Won,Lost',            ],
+                'in:New Lead,Meeting,Proposal Pending,Proforma Pending,Proposal Sent,Negotiation,Payment Waiting,Won,Lost',
+            ],
         ]);
+
+        $meetingAt = $this->meetingAtForStage($request);
 
         $user = auth()->user();
 
@@ -8510,7 +8791,6 @@ class LeadController extends Controller
                     'message' => 'You are not allowed to update this lead.',
                 ], 403);
             }
-
         } else {
 
             if ((int) $lead->user_id !== (int) $user->id) {
@@ -8521,14 +8801,23 @@ class LeadController extends Controller
             }
         }
 
-        $lead->stage = $request->stage;
-        $lead->save();
+        $lead = DB::transaction(function () use ($lead, $request, $meetingAt) {
+            $lockedLead = Lead::whereKey($lead->id)->lockForUpdate()->firstOrFail();
+            $this->movePipelineStage('lead', $lockedLead, $request->stage);
+            $lockedLead->save();
+            if ($meetingAt) {
+                $this->savePipelineMeeting('lead', (int) $lockedLead->id, $meetingAt);
+            }
+            return $lockedLead;
+        });
 
         return response()->json([
             'success' => true,
             'message' => 'Lead stage updated successfully.',
             'lead_id' => $lead->id,
             'stage' => $lead->stage,
+            'stage_entered_at' => $lead->stage_entered_at,
+            'meeting_at' => $meetingAt?->format('Y-m-d H:i:s'),
         ]);
     }
 
@@ -8543,8 +8832,11 @@ class LeadController extends Controller
             'stage' => [
                 'required',
                 'string',
-                'in:New Lead,Contacted,Proposal Pending,Proforma Pending,Send Proforma,Proposal Sent,Negotiation,Payment Waiting,Won,Lost',            ],
+                'in:New Lead,Meeting,Proposal Pending,Proforma Pending,Send Proforma,Proposal Sent,Negotiation,Payment Waiting,Won,Lost',
+            ],
         ]);
+
+        $meetingAt = $this->meetingAtForStage($request);
 
         $user = auth()->user();
 
@@ -8567,7 +8859,6 @@ class LeadController extends Controller
                         'message' => 'You are not allowed to update this proforma.',
                     ], 403);
                 }
-
             } elseif (
                 (int) $proforma->branch_id
                 !==
@@ -8579,7 +8870,6 @@ class LeadController extends Controller
                     'message' => 'You are not allowed to update this proforma.',
                 ], 403);
             }
-
         } else {
 
             if (
@@ -8596,14 +8886,23 @@ class LeadController extends Controller
             }
         }
 
-        $proforma->stage = $request->stage;
-        $proforma->save();
+        $proforma = DB::transaction(function () use ($proforma, $request, $meetingAt) {
+            $lockedProforma = Proforma::whereKey($proforma->id)->lockForUpdate()->firstOrFail();
+            $this->movePipelineStage('proforma', $lockedProforma, $request->stage);
+            $lockedProforma->save();
+            if ($meetingAt) {
+                $this->savePipelineMeeting('proforma', (int) $lockedProforma->id, $meetingAt);
+            }
+            return $lockedProforma;
+        });
 
         return response()->json([
             'success' => true,
             'message' => 'Proforma stage updated successfully.',
             'proforma_id' => $proforma->id,
             'stage' => $proforma->stage,
+            'stage_entered_at' => $proforma->stage_entered_at,
+            'meeting_at' => $meetingAt?->format('Y-m-d H:i:s'),
         ]);
     }
 
@@ -8622,8 +8921,11 @@ class LeadController extends Controller
             'stage' => [
                 'required',
                 'string',
-                'in:New Lead,Contacted,Proposal Pending,Proforma Pending,Proposal Sent,Negotiation,Payment Waiting,Won,Lost',            ],
+                'in:New Lead,Meeting,Proposal Pending,Proforma Pending,Proposal Sent,Negotiation,Payment Waiting,Won,Lost',
+            ],
         ]);
+
+        $meetingAt = $this->meetingAtForStage($request);
 
         $user = auth()->user();
 
@@ -8653,7 +8955,6 @@ class LeadController extends Controller
                     'message' => 'You are not allowed to update this quotation.',
                 ], 403);
             }
-
         } else {
 
             if (
@@ -8668,8 +8969,15 @@ class LeadController extends Controller
             }
         }
 
-        $lead->stage = $request->stage;
-        $lead->save();
+        $lead = DB::transaction(function () use ($lead, $request, $meetingAt) {
+            $lockedLead = Lead::whereKey($lead->id)->lockForUpdate()->firstOrFail();
+            $this->movePipelineStage('lead', $lockedLead, $request->stage);
+            $lockedLead->save();
+            if ($meetingAt) {
+                $this->savePipelineMeeting('lead', (int) $lockedLead->id, $meetingAt);
+            }
+            return $lockedLead;
+        });
 
         return response()->json([
             'success' => true,
@@ -8677,6 +8985,8 @@ class LeadController extends Controller
             'quotation_id' => $quotation->id,
             'lead_id' => $lead->id,
             'stage' => $lead->stage,
+            'stage_entered_at' => $lead->stage_entered_at,
+            'meeting_at' => $meetingAt?->format('Y-m-d H:i:s'),
         ]);
     }
 
@@ -8731,7 +9041,6 @@ class LeadController extends Controller
                 'branch_id',
                 $user->branch_id
             );
-
         } else {
 
             $query->where(
@@ -8832,7 +9141,7 @@ class LeadController extends Controller
 
         $categories =
             \App\Models\LeadCategory::orderBy('title')
-                ->get();
+            ->get();
 
         $salesUsers = collect();
 
@@ -8840,19 +9149,18 @@ class LeadController extends Controller
 
             $salesUsers =
                 \App\Models\User::role('Sales')
-                    ->orderBy('name')
-                    ->get();
-
+                ->orderBy('name')
+                ->get();
         } elseif ($user->hasRole('Sales')) {
 
             $salesUsers =
                 \App\Models\User::role('Sales')
-                    ->where(
-                        'branch_id',
-                        $user->branch_id
-                    )
-                    ->orderBy('name')
-                    ->get();
+                ->where(
+                    'branch_id',
+                    $user->branch_id
+                )
+                ->orderBy('name')
+                ->get();
         }
 
 
@@ -8875,7 +9183,6 @@ class LeadController extends Controller
                 'branch_id',
                 $user->branch_id
             );
-
         } else {
 
             $summaryQuery->where(
@@ -8890,18 +9197,18 @@ class LeadController extends Controller
 
         $completedImports =
             (clone $summaryQuery)
-                ->where('status', 'completed')
-                ->count();
+            ->where('status', 'completed')
+            ->count();
 
         $pendingImports =
             (clone $summaryQuery)
-                ->where('status', 'pending')
-                ->count();
+            ->where('status', 'pending')
+            ->count();
 
         $failedImports =
             (clone $summaryQuery)
-                ->where('status', 'failed')
-                ->count();
+            ->where('status', 'failed')
+            ->count();
 
 
         /*
@@ -8956,17 +9263,17 @@ class LeadController extends Controller
 
         $leads =
             \App\Models\Lead::query()
-                ->where(
-                    'import_batch_id',
-                    $batch->id
-                )
-                ->with([
-                    'leadcat',
-                    'assignedUser',
-                ])
-                ->latest('id')
-                ->paginate(100)
-                ->withQueryString();
+            ->where(
+                'import_batch_id',
+                $batch->id
+            )
+            ->with([
+                'leadcat',
+                'assignedUser',
+            ])
+            ->latest('id')
+            ->paginate(100)
+            ->withQueryString();
 
 
         /*
@@ -9047,7 +9354,7 @@ class LeadController extends Controller
         $filePath =
             storage_path(
                 'app/' .
-                $fileRelativePath
+                    $fileRelativePath
             );
 
 
@@ -9101,7 +9408,6 @@ class LeadController extends Controller
                     $reader->load(
                         $filePath
                     );
-
             } elseif (
                 $extension === 'xlsx' ||
                 $extension === 'xls'
@@ -9111,7 +9417,6 @@ class LeadController extends Controller
                     \PhpOffice\PhpSpreadsheet\IOFactory::load(
                         $filePath
                     );
-
             } else {
 
                 return redirect()
@@ -9136,8 +9441,6 @@ class LeadController extends Controller
                     true,
                     false
                 );
-
-
         } catch (\Throwable $e) {
 
             return redirect()
@@ -9298,7 +9601,7 @@ class LeadController extends Controller
     }
 
     public function downloadImportBatch(
-    \App\Models\LeadImportBatch $batch
+        \App\Models\LeadImportBatch $batch
     ) {
         /*
         |--------------------------------------------------------------------------
@@ -9348,7 +9651,7 @@ class LeadController extends Controller
         $filePath =
             storage_path(
                 'app/' .
-                $fileRelativePath
+                    $fileRelativePath
             );
 
 
@@ -9399,11 +9702,11 @@ class LeadController extends Controller
 
         $leadIds =
             \App\Models\Lead::query()
-                ->where(
-                    'import_batch_id',
-                    $batch->id
-                )
-                ->pluck('id');
+            ->where(
+                'import_batch_id',
+                $batch->id
+            )
+            ->pluck('id');
 
 
         /*
@@ -9426,11 +9729,11 @@ class LeadController extends Controller
 
             $hasQuotations =
                 \App\Models\Quotation::query()
-                    ->whereIn(
-                        'lead_id',
-                        $leadIds
-                    )
-                    ->exists();
+                ->whereIn(
+                    'lead_id',
+                    $leadIds
+                )
+                ->exists();
 
 
             /*
@@ -9441,11 +9744,11 @@ class LeadController extends Controller
 
             $hasProformas =
                 \App\Models\Proforma::query()
-                    ->whereIn(
-                        'lead_id',
-                        $leadIds
-                    )
-                    ->exists();
+                ->whereIn(
+                    'lead_id',
+                    $leadIds
+                )
+                ->exists();
 
 
             /*
@@ -9456,11 +9759,11 @@ class LeadController extends Controller
 
             $hasLeadActions =
                 \App\Models\LeadAction::query()
-                    ->whereIn(
-                        'lead_id',
-                        $leadIds
-                    )
-                    ->exists();
+                ->whereIn(
+                    'lead_id',
+                    $leadIds
+                )
+                ->exists();
 
 
             /*
@@ -9474,11 +9777,11 @@ class LeadController extends Controller
 
             $hasDeals =
                 \App\Models\Deal::query()
-                    ->whereIn(
-                        'leads_id',
-                        $leadIds
-                    )
-                    ->exists();
+                ->whereIn(
+                    'leads_id',
+                    $leadIds
+                )
+                ->exists();
 
 
             /*
@@ -9520,8 +9823,8 @@ class LeadController extends Controller
                     ->with(
                         'error_message',
                         'This import cannot be deleted because some imported leads already have related CRM activity: '
-                        . implode(', ', $linkedItems)
-                        . '.'
+                            . implode(', ', $linkedItems)
+                            . '.'
                     );
             }
         }
@@ -9567,7 +9870,7 @@ class LeadController extends Controller
                 $filePath =
                     storage_path(
                         'app/' .
-                        $fileRelativePath
+                            $fileRelativePath
                     );
             }
         }
@@ -9630,7 +9933,6 @@ class LeadController extends Controller
             */
 
             \Illuminate\Support\Facades\DB::commit();
-
         } catch (\Throwable $e) {
 
             \Illuminate\Support\Facades\DB::rollBack();
@@ -9688,8 +9990,8 @@ class LeadController extends Controller
                 ->with(
                     'success_message',
                     "Import #{$batchId} deleted successfully. "
-                    . "{$leadCount} imported leads were removed. "
-                    . "The original file could not be physically removed from storage."
+                        . "{$leadCount} imported leads were removed. "
+                        . "The original file could not be physically removed from storage."
                 );
         }
 
@@ -9701,10 +10003,111 @@ class LeadController extends Controller
             ->with(
                 'success_message',
                 "Import #{$batchId} ({$originalFileName}) deleted successfully. "
-                . "{$leadCount} imported leads and the original uploaded file were removed."
+                    . "{$leadCount} imported leads and the original uploaded file were removed."
             );
     }
 
 
+    // Paste this method inside App\Http\Controllers\Admin\LeadController.
+    // The existing controller already imports Lead, Proforma and Carbon.
+    public function todayMeetings()
+    {
+        $user = auth()->user();
+        $today = Carbon::now('Asia/Kolkata');
+        $start = $today->copy()->startOfDay()->format('Y-m-d H:i:s');
+        $end = $today->copy()->addDay()->startOfDay()->format('Y-m-d H:i:s');
 
+        // Admin-controlled pipeline visibility also applies to this page.
+        if (!in_array('Meeting', $this->visiblePipelineStages($user), true)) {
+            return view('admin.leads.today-meetings', [
+                'meetings' => collect(),
+                'today' => $today,
+            ]);
+        }
+
+        // A quotation uses its linked lead's stage and meeting schedule.
+        // Fetching that lead once avoids duplicates when it has several quotations.
+        $leadQuery = Lead::query()
+            ->with('userlead')
+            ->join('pipeline_meetings as pm', function ($join) {
+                $join->on('pm.entity_id', '=', 'leads.id')
+                    ->where('pm.entity_type', '=', 'lead');
+            })
+            ->where('leads.stage', 'Meeting')
+            ->where('pm.meeting_at', '>=', $start)
+            ->where('pm.meeting_at', '<', $end)
+            ->where(function ($query) {
+                $query->where('leads.status', 'accept')
+                    ->orWhereHas('quotations');
+            })
+            ->select('leads.*', 'pm.meeting_at as scheduled_at');
+
+        if ($user->hasRole('Admin')) {
+            // Admin can see all branches.
+        } elseif ($user->hasRole('Sales')) {
+            $leadQuery->where('leads.branch_id', $user->branch_id);
+        } else {
+            $leadQuery->where(function ($query) use ($user) {
+                $query->where('leads.user_id', $user->id)
+                    ->orWhereHas('quotations', function ($quotationQuery) use ($user) {
+                        $quotationQuery->where('user_id', $user->id);
+                    });
+            });
+        }
+
+        $leadMeetings = $leadQuery->get()->map(function ($lead) {
+            return [
+                'type' => $lead->status === 'accept' ? 'Lead' : 'Quotation',
+                'reference' => 'Lead #' . $lead->id,
+                'name' => trim($lead->name . ' ' . ($lead->last_name ?? '')),
+                'phone' => $lead->phone,
+                'salesperson' => $lead->userlead->name ?? 'Unassigned',
+                'meeting_at' => Carbon::parse($lead->scheduled_at, 'Asia/Kolkata'),
+            ];
+        });
+
+        // Proformas have their own pipeline stage and meeting schedule.
+        $proformaQuery = Proforma::query()
+            ->with(['lead.userlead', 'customer'])
+            ->join('pipeline_meetings as pm', function ($join) {
+                $join->on('pm.entity_id', '=', 'proformas.id')
+                    ->where('pm.entity_type', '=', 'proforma');
+            })
+            ->whereNotNull('proformas.lead_id')
+            ->whereHas('lead')
+            ->where('proformas.stage', 'Meeting')
+            ->where('pm.meeting_at', '>=', $start)
+            ->where('pm.meeting_at', '<', $end)
+            ->select('proformas.*', 'pm.meeting_at as scheduled_at');
+
+        if ($user->hasRole('Admin')) {
+            // Admin can see all branches.
+        } elseif ($user->hasRole('Sales')) {
+            $proformaQuery->whereHas('lead', function ($query) use ($user) {
+                $query->where('branch_id', $user->branch_id);
+            });
+        } else {
+            $proformaQuery->whereHas('lead', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
+            });
+        }
+
+        $proformaMeetings = $proformaQuery->get()->map(function ($proforma) {
+            $lead = $proforma->lead;
+            return [
+                'type' => 'Proforma',
+                'reference' => $proforma->proforma_no ?: 'PF-' . str_pad($proforma->id, 5, '0', STR_PAD_LEFT),
+                'name' => $lead->name ?? data_get($proforma->customer, 'company_name') ?? 'Client',
+                'phone' => $lead->phone ?? null,
+                'salesperson' => $lead->userlead->name ?? 'Unassigned',
+                'meeting_at' => Carbon::parse($proforma->scheduled_at, 'Asia/Kolkata'),
+            ];
+        });
+
+        $meetings = $leadMeetings->concat($proformaMeetings)
+            ->sortBy(fn($meeting) => $meeting['meeting_at']->timestamp)
+            ->values();
+
+        return view('admin.leads.today-meetings', compact('meetings', 'today'));
+    }
 }

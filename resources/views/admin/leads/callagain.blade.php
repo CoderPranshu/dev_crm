@@ -1,6 +1,6 @@
 @extends('index')
 
-@push('title', get_phrase('Call again Leads'))
+@push('title', get_phrase('Today Followups'))
 
 @section('content')
 
@@ -9,8 +9,8 @@
     <div class="ca-page-head">
         <div>
             <span class="ca-eyebrow">Lead Follow-Up</span>
-            <h4>{{ get_phrase('Call again Leads') }}</h4>
-            <p>Only leads currently marked as Call Again are shown here.</p>
+            <h4>{{ get_phrase('Today Followups') }}</h4>
+            <p>Follow ups scheduled for today are shown here.</p>
         </div>
 
         <div class="ca-head-count">
@@ -23,10 +23,6 @@
 
         <div class="ca-toolbar">
             <div class="ca-toolbar-actions">
-                <a href="{{ route('admin.leads.export', request()->route('id')) }}" class="ca-btn ca-btn-success">
-                    <i class="bi bi-file-earmark-arrow-down"></i>
-                    Export CSV
-                </a>
 
                 @can('lead-create')
                     <button
@@ -54,12 +50,19 @@
             </div>
         </div>
 
+        <div class="ca-toolbar" style="justify-content:flex-start;gap:8px;flex-wrap:wrap">
+            <span class="text-muted" style="font-size:11px;font-weight:700">Follow Up Category:</span>
+            @foreach(['' => 'All', 'hot' => 'Hot', 'warm' => 'Warm', 'cold' => 'Cold'] as $key => $label)
+                <a class="ca-btn {{ ($priority ?? null) === ($key ?: null) ? 'ca-btn-primary' : '' }}"
+                   href="{{ request()->fullUrlWithQuery(['priority' => $key ?: null]) }}">{{ $label }}</a>
+            @endforeach
+        </div>
         <div class="ca-tabs-wrap">
             <ul class="nav ca-tabs">
                 <li class="nav-item">
                     <a
                         class="nav-link {{ !request()->route('id') ? 'active' : '' }}"
-                        href="{{ route('admin.leads.callagain') }}"
+                        href="{{ route('admin.leads.callagain', ['priority' => $priority]) }}"
                     >
                         All
                         <span>{{ $totalCallAgain ?? $leads->count() }}</span>
@@ -70,7 +73,7 @@
                     <li class="nav-item">
                         <a
                             class="nav-link {{ request()->route('id') == $cat->id ? 'active' : '' }}"
-                            href="{{ route('admin.leads.callagain', $cat->id) }}"
+                            href="{{ route('admin.leads.callagain', ['id' => $cat->id, 'priority' => $priority]) }}"
                         >
                             {{ $cat->title }}
                             <span>{{ $categoryCounts[$cat->id] ?? 0 }}</span>
@@ -90,9 +93,10 @@
                             <th>{{ get_phrase('Phone') }}</th>
                             <th>{{ get_phrase('Remarks') }}</th>
                             <th>{{ get_phrase('Requirement') }}</th>
+                            <th>{{ get_phrase('Follow Up Category') }}</th>
                             <th>{{ get_phrase('Category') }}</th>
                             <th>{{ get_phrase('Status') }}</th>
-                            <th>{{ get_phrase('Call Date') }}</th>
+                            <th>{{ get_phrase('Follow Up Time') }}</th>
                             <th class="text-center">{{ get_phrase('Action') }}</th>
                         </tr>
                     </thead>
@@ -109,7 +113,14 @@
                                     ($lead->leadcat->title ?? '') . ' call again'
                                 ) }}"
                             >
-                                <td><span class="ca-no">{{ $loop->iteration }}</span></td>
+                                <td><span class="ca-no">{{ $loop->iteration }}</span>
+                                
+                                 <div>
+                                    <span class="badge bg-warning text-dark">
+                                        #{{ $lead->id }}
+                                    </span>
+                                </div>
+                                </td>
 
                                 <td>
                                     <div class="ca-person">
@@ -137,6 +148,7 @@
                                     </span>
                                 </td>
 
+                                <td><span class="ca-priority ca-priority-{{ $lead->follow_up_priority ?? 'none' }}"><i class="bi bi-thermometer-half"></i> {{ ucfirst($lead->follow_up_priority ?? '-') }}</span></td>
                                 <td>
                                     <span class="ca-category">{{ $lead->leadcat->title ?? '-' }}</span>
                                 </td>
@@ -190,7 +202,7 @@
 
                                         @can('lead-delete')
                                             <a href="javascript:void(0)"
-                                               onclick="confirmModal('{{ route('admin.leadcategory.delete', $lead->id) }}')"
+                                               onclick="confirmModal('{{ route('admin.lead.delete', $lead->id) }}')"
                                                class="ca-action ca-action-danger" title="Delete">
                                                 <i class="fi-rr-trash"></i>
                                             </a>
@@ -200,8 +212,8 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="9" class="text-center py-5 text-muted">
-                                    No Call Again leads found.
+                                <td colspan="10" class="text-center py-5 text-muted">
+                                    No follow ups scheduled for today.
                                 </td>
                             </tr>
                         @endforelse
@@ -253,7 +265,12 @@
                         </div>
 
                         <div class="ca-mobile-info">
-                            <small>Call Date</small>
+                            <small>Priority</small>
+                            <strong><span class="ca-priority ca-priority-{{ $lead->follow_up_priority ?? 'none' }}"><i class="bi bi-thermometer-half"></i> {{ ucfirst($lead->follow_up_priority ?? '-') }}</span></strong>
+                        </div>
+
+                        <div class="ca-mobile-info">
+                            <small>Follow Up Time</small>
                             <strong>
                                 {{ $lead->call_schedule ? \Carbon\Carbon::parse($lead->call_schedule)->format('d M Y') : 'N/A' }}
                             </strong>
@@ -304,7 +321,7 @@
             @empty
                 <div class="ca-mobile-empty">
                     <i class="bi bi-telephone-x"></i>
-                    <strong>No Call Again leads found</strong>
+                    <strong>No follow ups scheduled for today</strong>
                     <span>There are no leads waiting for another call.</span>
                 </div>
             @endforelse
@@ -376,6 +393,15 @@
 }
 @media(max-width:390px){.ca-mobile-top{flex-direction:column}.ca-mobile-actions{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
+
+<style>
+.ca-priority{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:999px;font-weight:800;font-size:12px;border:1px solid transparent;white-space:nowrap}
+.ca-priority-hot{background:#fff0f1;color:#ba1730;border-color:#ffc2cc}
+.ca-priority-warm{background:#fff5dc;color:#9d5b00;border-color:#ffd788}
+.ca-priority-cold{background:#e9f4ff;color:#175ca8;border-color:#b6d9ff}
+.ca-priority-none{background:#f1f3f5;color:#697580;border-color:#dae0e5}
+</style>
+
 @endpush
 
 @push('js')
@@ -418,3 +444,5 @@ document.addEventListener("DOMContentLoaded",function(){
 });
 </script>
 @endpush
+
+

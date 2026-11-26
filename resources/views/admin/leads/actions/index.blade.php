@@ -1618,6 +1618,12 @@
                         <tr>
                             <td>
                                 {{ ($actions->firstItem() ?? 1) + $loop->index }}
+                                
+                                 <div>
+                                    <span class="badge bg-warning text-dark">
+                                        #{{ $action->lead->id ?? '-' }}
+                                    </span>
+                                </div>
                             </td>
 
                             <td>
@@ -1751,7 +1757,7 @@
 
                                         <div class="la-update-grid">
                                             <button type="button" class="la-update-option"
-                                                    onclick="updateExistingLeadAction({{ $action->id }}, 'follow_up', this)">
+                                                    onclick="openActionFollowUpModal({{ $action->lead_id }})">
                                                 <i class="bi bi-arrow-repeat"></i>
                                                 {{ get_phrase('Follow Up') }}
                                             </button>
@@ -1833,6 +1839,11 @@
                                                 <i class="bi bi-megaphone"></i>
                                                 {{ get_phrase('Marketing / Job') }}
                                             </button>
+                                            @if($action->lead)
+                                                <button type="button" class="la-update-option" onclick="openActionTransferModal({{ $action->lead_id }})">
+                                                    <i class="bi bi-arrow-left-right"></i> Transfer Lead
+                                                </button>
+                                            @endif
                                         </div>
                                     </div>
                                 </div>
@@ -1996,7 +2007,7 @@
 
                             <div class="la-update-grid">
                                 <button type="button" class="la-update-option"
-                                        onclick="updateExistingLeadAction({{ $action->id }}, 'follow_up', this)">
+                                        onclick="openActionFollowUpModal({{ $action->lead_id }})">
                                     <i class="bi bi-arrow-repeat"></i>
                                     {{ get_phrase('Follow Up') }}
                                 </button>
@@ -2078,6 +2089,11 @@
                                     <i class="bi bi-megaphone"></i>
                                     {{ get_phrase('Marketing / Job') }}
                                 </button>
+                                @if($action->lead)
+                                    <button type="button" class="la-update-option" onclick="openActionTransferModal({{ $action->lead_id }})">
+                                        <i class="bi bi-arrow-left-right"></i> Transfer Lead
+                                    </button>
+                                @endif
                             </div>
                         </div>
                     </div>
@@ -2248,6 +2264,48 @@
 
         </div>
     </div>
+</div>
+
+<section class="la-card" style="margin-top:16px;padding:18px">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 style="font-size:16px;font-weight:750;margin:0">Lead Transfer History</h2>
+        <span class="text-muted" style="font-size:11px">Latest 100 records · follows selected date/user/search filters</span>
+    </div>
+    <div class="table-responsive"><table class="table table-sm align-middle">
+        <thead><tr><th>Lead</th><th>From</th><th>To</th><th>By</th><th>Source</th><th>Reason</th><th>Date</th></tr></thead>
+        <tbody>
+        @forelse($transferHistory as $transfer)
+            <tr><td>{{ $transfer->lead_name }}</td><td>{{ $transfer->old_name ?? 'Unassigned' }}</td>
+                <td>{{ $transfer->new_name }}</td><td>{{ $transfer->actor_name }}</td>
+                <td>{{ str_replace('_', ' ', ucfirst($transfer->source)) }}</td><td>{{ $transfer->reason ?: '-' }}</td>
+                <td>{{ \Carbon\Carbon::parse($transfer->created_at)->format('d M Y, h:i A') }}</td></tr>
+        @empty
+            <tr><td colspan="7" class="text-center text-muted py-3">No lead transfers in this view.</td></tr>
+        @endforelse
+        </tbody>
+    </table></div>
+</section>
+
+<div class="modal fade" id="leadScheduleTransferModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header"><h5 id="leadScheduleTransferTitle" class="modal-title">Lead</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+            <input type="hidden" id="leadScheduleTransferId">
+            <div id="leadScheduleFields">
+                <label for="leadScheduleDate" class="form-label">Follow Up Date &amp; Time</label>
+                <input id="leadScheduleDate" type="datetime-local" class="form-control mb-3">
+                <label for="leadSchedulePriority" class="form-label">Follow Up Category</label>
+                <select id="leadSchedulePriority" class="form-select mb-3"><option value="">Select</option><option value="hot">Hot</option><option value="warm">Warm</option><option value="cold">Cold</option></select>
+            </div>
+            <label for="leadTransferTarget" class="form-label">Assign To</label>
+            <select id="leadTransferTarget" class="form-select mb-3"><option value="">Keep current owner</option>
+                @foreach($salesUsers ?? [] as $salesUser)<option value="{{ $salesUser->id }}">{{ $salesUser->name }}</option>@endforeach
+            </select>
+            <label for="leadScheduleReason" class="form-label">Remarks / Transfer Reason</label>
+            <textarea id="leadScheduleReason" class="form-control" maxlength="2000" rows="3"></textarea>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button><button type="button" id="leadScheduleTransferSubmit" class="btn btn-primary" onclick="submitActionFollowUpOrTransfer()">Save</button></div>
+    </div></div>
 </div>
 
 @endsection
@@ -3468,6 +3526,55 @@
             );
         }
     }
+
+    let actionLeadMode = 'followup';
+    function openActionFollowUpModal(leadId) { openActionLeadModal(leadId, 'followup'); }
+    function openActionTransferModal(leadId) { openActionLeadModal(leadId, 'transfer'); }
+    function openActionLeadModal(leadId, mode) {
+        actionLeadMode = mode;
+        document.getElementById('leadScheduleTransferId').value = leadId;
+        document.getElementById('leadScheduleTransferTitle').textContent = mode === 'followup' ? 'Schedule Follow Up' : 'Transfer Lead';
+        document.getElementById('leadScheduleFields').style.display = mode === 'followup' ? '' : 'none';
+        document.getElementById('leadScheduleDate').value = '';
+        document.getElementById('leadSchedulePriority').value = '';
+        document.getElementById('leadTransferTarget').value = '';
+        document.getElementById('leadScheduleReason').value = '';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('leadScheduleTransferModal')).show();
+    }
+    async function submitActionFollowUpOrTransfer() {
+        const leadId = document.getElementById('leadScheduleTransferId').value;
+        const userId = document.getElementById('leadTransferTarget').value;
+        const reason = document.getElementById('leadScheduleReason').value.trim();
+        const schedule = document.getElementById('leadScheduleDate').value;
+        const priority = document.getElementById('leadSchedulePriority').value;
+        if (actionLeadMode === 'transfer' && (!userId || !reason)) { alert('Select a Sales user and add a reason.'); return; }
+        if (actionLeadMode === 'followup' && (!schedule || !priority)) { alert('Select a date/time and Hot, Warm or Cold.'); return; }
+        const button = document.getElementById('leadScheduleTransferSubmit');
+        button.disabled = true;
+        try {
+            const url = actionLeadMode === 'transfer'
+                ? `{{ url('/admin/leads') }}/${leadId}/transfer`
+                : `{{ url('/admin/leads') }}/${leadId}/follow-up`;
+            const body = actionLeadMode === 'transfer'
+                ? {user_id: userId, reason: reason}
+                : {user_id: userId || null, remarks: reason, call_schedule: schedule, follow_up_priority: priority};
+            const response = await fetch(url, {method:'POST',headers:{'Accept':'application/json','Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}','X-Requested-With':'XMLHttpRequest'},body:JSON.stringify(body)});
+            const result = await response.json();
+            if (!response.ok || result.status === false) throw new Error(result.message || Object.values(result.errors || {})[0]?.[0] || 'Unable to save.');
+            window.location.reload();
+        } catch (error) { alert(error.message); button.disabled = false; }
+    }
 </script>
 @endpush
+
+
+
+
+
+
+
+
+
+
+
 

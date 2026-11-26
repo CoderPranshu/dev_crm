@@ -46,7 +46,7 @@ class SeoPlanClientController extends Controller
         $plans = SeoPlan::with('service')->where('status', 1)->get();
         $clients  = Company::all(); // 👈 IMPORTANT (companies = clients)
 
-        return $plans;
+        // return $plans;
         // $teams = User::orderBy('name')->get();
 
         $teams = User::whereHas('department', function ($query) {

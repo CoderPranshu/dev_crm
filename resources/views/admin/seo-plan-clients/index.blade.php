@@ -34,6 +34,7 @@
                 <thead>
                     <tr>
                         <th>#</th>
+                        <th>id</th>
                         <th>Client</th>
                         <th>Assign Team</th>
                         <th>SEO Plan</th>
@@ -51,6 +52,7 @@
                     @foreach($assignments as $item)
                     <tr>
                         <td>{{ $loop->iteration }}</td>
+                        <td>{{ $item->id }}</td>
                         <td>{{ $item->company->name ?? '-' }}</td>
                          <td>{{ $item->team->name ?? '-' }}</td>
                         <td>{{ $item->seoPlan->name ?? '-' }}</td>

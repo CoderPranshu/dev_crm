@@ -1902,6 +1902,35 @@ textarea.lm-followup-input{
 
 
 </style>
+
+<style>
+.required-outcome-grid,.required-reason-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.required-outcome-choice,.required-reason-choice{display:flex;align-items:center;gap:9px;padding:10px;border:1px solid #dae3ed;border-radius:9px;cursor:pointer;font-weight:600;font-size:13px;background:#fff}
+.required-outcome-choice:has(input:checked),.required-reason-choice:has(input:checked){border-color:#1698ed;background:#eef8ff;color:#075b9b}
+.required-outcome-choice input,.required-reason-choice input{accent-color:#1595e5;width:16px;height:16px;flex:none}
+#requiredCallModal .modal-dialog{max-height:calc(100dvh - 2rem);margin:1rem auto}
+#requiredCallModal .modal-content{max-height:calc(100dvh - 2rem);overflow:hidden}
+#requiredCallForm{display:flex;flex-direction:column;min-height:0;max-height:calc(100dvh - 2rem)}
+#requiredCallForm .modal-header,#requiredCallForm .modal-footer{flex:0 0 auto}
+#requiredCallForm .modal-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.required-calendar{border:1px solid #dbe5ef;border-radius:12px;padding:12px;background:#fbfdff}
+.required-calendar-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.required-calendar-top button{border:1px solid #dce5ef;border-radius:8px;background:#fff;color:#0875b9;width:34px;height:34px}
+.required-calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;text-align:center}
+.required-calendar-weekdays{font-size:11px;font-weight:700;color:#667085;margin-bottom:4px}
+.required-calendar-grid button{width:100%;min-width:0;min-height:35px;border:0;border-radius:7px;background:transparent;color:#293e50}
+.required-calendar-grid button:hover{background:#e2f2ff}.required-calendar-grid button.is-today{outline:1px solid #9bd5f8}
+.required-calendar-grid button.is-selected{background:#0b84cf;color:#fff;font-weight:700}
+.required-calendar-bottom{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #e6edf4;margin-top:10px;padding-top:10px;font-size:12px}
+.required-calendar-bottom label{display:flex;align-items:center;gap:8px;margin:0}.required-calendar-bottom input{width:115px}
+.required-priority-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.required-priority-choice{display:flex;align-items:center;gap:7px;border:1px solid #dce5ee;padding:10px;border-radius:9px;cursor:pointer;font-weight:700;font-size:13px}
+.required-priority-choice input{width:16px;height:16px;flex:none}.required-priority-choice.hot input{accent-color:#bf283a}.required-priority-choice.warm input{accent-color:#a05b00}.required-priority-choice.cold input{accent-color:#1565ae}
+.required-priority-choice.hot:has(input:checked){background:#fff1f2;border-color:#f5aeb8;color:#b41f35}
+.required-priority-choice.warm:has(input:checked){background:#fff7e6;border-color:#efcb8a;color:#985800}
+.required-priority-choice.cold:has(input:checked){background:#eef6ff;border-color:#aad2fa;color:#155b9d}
+@media(max-width:480px){.required-outcome-grid,.required-reason-grid{grid-template-columns:1fr}.required-priority-grid{gap:4px}.required-priority-choice{font-size:11px;padding:7px 4px}}
+</style>
 @endpush
 
 @section('content')
@@ -1940,7 +1969,7 @@ textarea.lm-followup-input{
         <div class="lm-card lm-kpi">
             <div class="lm-kpi-icon"><i class="bi bi-people"></i></div>
             <div>
-                <div class="lm-kpi-label">{{ get_phrase('Total Leads') }}</div>
+                <div class="lm-kpi-label">{{ get_phrase('Leads In Queue') }}</div>
                 <div class="lm-kpi-value tabular">{{ number_format($totalLeads ?? 0) }}</div>
             </div>
         </div>
@@ -2030,10 +2059,6 @@ textarea.lm-followup-input{
                         <select name="status">
                             <option value="">{{ get_phrase('All Status') }}</option>
                             <option value="pending" {{ request('status')==='pending'?'selected':'' }}>{{ get_phrase('Pending') }}</option>
-                            <option value="accept" {{ request('status')==='accept'?'selected':'' }}>{{ get_phrase('Accepted') }}</option>
-                            <option value="reject" {{ request('status')==='reject'?'selected':'' }}>{{ get_phrase('Rejected') }}</option>
-                            <option value="call" {{ request('status')==='call'?'selected':'' }}>{{ get_phrase('Call') }}</option>
-                            <option value="contacted" {{ request('status')==='contacted'?'selected':'' }}>{{ get_phrase('Contacted') }}</option>
                         </select>
                     </div>
 
@@ -2270,7 +2295,17 @@ textarea.lm-followup-input{
                                        onchange="syncLeadSelection(this)">
                             </td>
 
-                            <td>{{ ($leads->firstItem() ?? 1) + $loop->index }}</td>
+                            <td>
+                                {{ ($leads->firstItem() ?? 1) + $loop->index }}
+                                {{-- <div>#{{ $lead->id }}</div> --}}
+
+                                  <div>
+                                    <span class="badge bg-warning text-dark">
+                                        #{{ $lead->id }}
+                                    </span>
+                                </div>
+
+                            </td>
 
                             <td>
                                 <div class="lm-lead-name">{{ $lead->name }}</div>
@@ -2402,12 +2437,12 @@ textarea.lm-followup-input{
                                         <i class="fi-rr-pencil"></i>
                                     </a>
 
-                                    <a href="#"
+                                    {{-- <a href="#"
                                        class="lm-action status"
                                        title="{{ get_phrase('Change Status') }}"
                                        onclick="showRightModal('{{ route('right_modal', ['view_path'=>'admin/leads/change_status','id'=>$lead->id]) }}','{{ get_phrase('Change Status') }}'); return false;">
                                         <i class="fi-rr-refresh"></i>
-                                    </a>
+                                    </a> --}}
 
                                     <a href="#"
                                        class="lm-action delete"
@@ -2435,6 +2470,8 @@ textarea.lm-followup-input{
 
 <div class="lm-action-panel"
      data-lead-action-panel="{{ $lead->id }}"
+     data-lead-name="{{ $lead->name }}"
+     data-lead-phone="{{ $lead->phone }}"
      data-action-url="{{ route('admin.leads.action.store', $lead->id) }}">
 
     <div class="lm-action-panel-header">
@@ -2462,7 +2499,8 @@ textarea.lm-followup-input{
                 {{ $lead->id }},
                 @js($lead->name),
                 @js($lead->remarks ?? ''),
-                '{{ $lead->user_id ?? '' }}'
+                '{{ $lead->user_id ?? '' }}',
+                @js($lead->follow_up_priority ?? '')
             )"
         >
             <i class="bi bi-arrow-repeat"></i>
@@ -2657,6 +2695,8 @@ textarea.lm-followup-input{
                             <div class="lm-mcard-phone">{{ $lead->phone ?: 'No phone number' }}</div>
                         </div>
 
+                        
+
                         <div data-lead-status="{{ $lead->id }}">
                             @if($mobileStatus === 'contacted')
                                 <span class="lm-status-dot contacted"
@@ -2675,8 +2715,19 @@ textarea.lm-followup-input{
                             @else
                                 <span class="lm-badge lm-status-pending">{{ ucfirst($mobileStatus) }}</span>
                             @endif
+
+                           
                         </div>
+
+                        
                     </div>
+
+                     {{-- <div class="xl:float-end">{{ $lead->id ?: 'Unnamed Lead' }}</div> --}}
+
+                    <div style="float: right; margin-top: -20px;">#{{ $lead->id }}</div>
+
+
+
 
                     <div class="lm-mcard-cat">{{ $lead->leadcat->title ?? 'No Category' }}</div>
 
@@ -2797,6 +2848,8 @@ textarea.lm-followup-input{
 
                     <div class="lm-action-panel"
                          data-lead-action-panel="{{ $lead->id }}"
+                         data-lead-name="{{ $lead->name }}"
+                         data-lead-phone="{{ $lead->phone }}"
                          data-action-url="{{ route('admin.leads.action.store', $lead->id) }}">
 
                         <div class="lm-action-panel-header">
@@ -2821,7 +2874,8 @@ textarea.lm-followup-input{
                                     {{ $lead->id }},
                                     @js($lead->name),
                                     @js($lead->remarks ?? ''),
-                                    '{{ $lead->user_id ?? '' }}'
+                                    '{{ $lead->user_id ?? '' }}',
+                @js($lead->follow_up_priority ?? '')
                                 )"
                             >
                                 <i class="bi bi-arrow-repeat"></i>
@@ -3291,7 +3345,7 @@ textarea.lm-followup-input{
 
 
                         {{-- ASSIGN USER --}}
-                        @if(auth()->user()->hasRole('Admin'))
+                        @if(($salesUsers ?? collect())->isNotEmpty())
 
                             <div class="mb-3">
 
@@ -3338,6 +3392,15 @@ textarea.lm-followup-input{
                         @endif
 
 
+                        <div class="mb-3">
+                            <label for="followUpPriority" class="lm-followup-label">Follow Up Category <span class="text-danger">*</span></label>
+                            <select id="followUpPriority" name="follow_up_priority" class="form-select lm-followup-input" required>
+                                <option value="">Select category</option>
+                                <option value="hot">Hot</option>
+                                <option value="warm">Warm</option>
+                                <option value="cold">Cold</option>
+                            </select>
+                        </div>
                         {{-- REMARKS --}}
                         <div class="mb-2">
 
@@ -3609,6 +3672,106 @@ textarea.lm-followup-input{
 </div>
 
 
+
+
+{{-- Required call outcome, shared by desktop and mobile. Server flag restores it after reload. --}}
+<div class="modal fade" id="requiredCallModal" tabindex="-1" aria-labelledby="requiredCallTitle" aria-modal="true"
+     data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content" style="border-radius:16px">
+            <form id="requiredCallForm" onsubmit="submitRequiredCall(event)">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title" id="requiredCallTitle">Call outcome is required</h5>
+                        <small class="text-muted" id="requiredCallLeadName"></small>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="requiredCallLeadId">
+                    <input type="hidden" id="requiredCallPhone">
+                    <div class="mb-3">
+                        <label class="form-label d-block">Send a quotation after the call</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-outline-primary" onclick="openRequiredCallQuotation('quick')">Quick Quotation</button>
+                            <button type="button" class="btn btn-outline-primary" onclick="openRequiredCallQuotation('detailed')">Detailed Quotation</button>
+                        </div>
+                        <small class="text-muted">Saving a quotation and opening WhatsApp completes this call action.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">What happened on the call?</label>
+                        <input type="hidden" id="requiredCallOutcome">
+                        <div class="required-outcome-grid" role="group" aria-label="Choose one call outcome">
+                            @foreach([
+                                'follow_up' => 'Schedule Follow Up', 'contacted' => 'Contacted',
+                                'not_contactable' => 'Not Contactable', 'not_interested' => 'Not Interested',
+                                'wrong_category' => 'Wrong Category', 'out_of_area' => 'Out of Area',
+                                'marketing_job' => 'Marketing / Job', 'deal_close' => 'Deal Close',
+                            ] as $outcomeValue => $outcomeLabel)
+                                <label class="required-outcome-choice">
+                                    <input type="checkbox" value="{{ $outcomeValue }}" onchange="chooseRequiredCallOutcome(this)">
+                                    <span>{{ $outcomeLabel }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    <div id="requiredCallReasonFields" class="mb-3" hidden>
+                        <label class="form-label" id="requiredCallReasonTitle">Call result</label>
+                        <div class="required-reason-grid" id="requiredCallReasonChoices"></div>
+                    </div>
+                    <div id="requiredCallFollowUpFields" hidden>
+                        <div class="mb-3">
+                            <label class="form-label">Follow Up Date & Time <span class="text-danger">*</span></label>
+                            <input type="hidden" id="requiredCallSchedule">
+                            <div class="required-calendar" aria-label="Follow Up calendar">
+                                <div class="required-calendar-top">
+                                    <button type="button" aria-label="Previous month" onclick="moveRequiredCallMonth(-1)"><i class="bi bi-chevron-left"></i></button>
+                                    <strong id="requiredCalendarMonth"></strong>
+                                    <button type="button" aria-label="Next month" onclick="moveRequiredCallMonth(1)"><i class="bi bi-chevron-right"></i></button>
+                                </div>
+                                <div class="required-calendar-grid required-calendar-weekdays" aria-hidden="true">
+                                    <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                                </div>
+                                <div id="requiredCalendarDays" class="required-calendar-grid" role="group" aria-label="Select follow up date"></div>
+                                <div class="required-calendar-bottom">
+                                    <span id="requiredCalendarSelected" aria-live="polite">Select a date</span>
+                                    <label for="requiredCallTime">Time
+                                        <input type="time" id="requiredCallTime" class="form-control" onchange="syncRequiredCallSchedule()">
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Priority <span class="text-danger">*</span></label>
+                            <input type="hidden" id="requiredCallPriority">
+                            <div class="required-priority-grid" role="group" aria-label="Choose one priority">
+                                <label class="required-priority-choice hot"><input type="checkbox" value="hot" onchange="chooseRequiredCallPriority(this)"><span>🔥 Hot</span></label>
+                                <label class="required-priority-choice warm"><input type="checkbox" value="warm" onchange="chooseRequiredCallPriority(this)"><span>☀️ Warm</span></label>
+                                <label class="required-priority-choice cold"><input type="checkbox" value="cold" onchange="chooseRequiredCallPriority(this)"><span>❄️ Cold</span></label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="requiredCallAssignee" class="form-label">Assigned To</label>
+                            <select class="form-select" id="requiredCallAssignee">
+                                <option value="">Keep current assignee</option>
+                                @foreach($salesUsers ?? [] as $salesUser)
+                                    <option value="{{ $salesUser->id }}">{{ $salesUser->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-2" id="requiredCallNoteFields" hidden>
+                        <label for="requiredCallNote" class="form-label"><span id="requiredCallNoteLabel">Call note for Other</span> <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="requiredCallNote" rows="3" maxlength="2000" placeholder="Write the other reason..."></textarea>
+                    </div>
+                    <div class="alert alert-danger mt-2 mb-0" id="requiredCallError" role="alert" hidden></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary w-100" id="requiredCallSubmit" type="submit">Save call outcome</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 @endsection
 
@@ -4947,6 +5110,237 @@ function leadActionLabel(actionType) {
     /* =====================================================
        CALL LEAD + AUTO MARK CONTACTED
        ===================================================== */
+    function showRequiredLeadAction(leadId) {
+        if (requiredQuotationResolved) return;
+        const modal = document.getElementById('requiredCallModal');
+        if (!modal) return;
+        document.getElementById('requiredCallLeadId').value = String(leadId);
+        const name = document.querySelector(`[data-lead-action-panel="${leadId}"]`);
+        document.getElementById('requiredCallLeadName').textContent = name?.dataset.leadName ||
+            (@json(optional($pendingCallLead)->name) && String(@json(optional($pendingCallLead)->id)) === String(leadId)
+                ? @json(optional($pendingCallLead)->name) : `Lead #${leadId}`);
+        document.getElementById('requiredCallPhone').value = name?.dataset.leadPhone ||
+            (String(@json(optional($pendingCallLead)->id)) === String(leadId)
+                ? (@json(optional($pendingCallLead)->phone) || '') : '');
+        if (window.bootstrap?.Modal) {
+            bootstrap.Modal.getOrCreateInstance(modal, {backdrop: 'static', keyboard: false}).show();
+        }
+    }
+
+    let requiredQuotationResolved = false;
+
+    function openRequiredCallQuotation(kind) {
+        const leadId = document.getElementById('requiredCallLeadId').value;
+        const phone = document.getElementById('requiredCallPhone').value;
+        const leadName = document.getElementById('requiredCallLeadName').textContent;
+        const error = document.getElementById('requiredCallError');
+        if (!leadId || !phone) {
+            error.textContent = 'Lead phone number is required to share a quotation on WhatsApp.';
+            error.hidden = false;
+            return;
+        }
+
+        const quoteElement = document.getElementById(kind === 'quick' ? 'quickQuotationModal' : 'detailedQuotationModal');
+        const callElement = document.getElementById('requiredCallModal');
+        if (!quoteElement || !window.bootstrap?.Modal) return;
+        requiredQuotationResolved = false;
+        callElement.addEventListener('hidden.bs.modal', function handoff() {
+            quoteElement.addEventListener('hidden.bs.modal', function returnToOutcome() {
+                if (!requiredQuotationResolved) showRequiredLeadAction(leadId);
+            }, {once: true});
+            if (kind === 'quick') openQuickQuotation(leadId, leadName, phone);
+            else openDetailedQuotationModal(leadId, leadName, phone);
+        }, {once: true});
+        bootstrap.Modal.getOrCreateInstance(callElement).hide();
+    }
+
+    function completeQuotationCall() {
+        requiredQuotationResolved = true;
+        sessionStorage.removeItem('requiredLeadAction');
+        bootstrap.Modal.getInstance(document.getElementById('requiredCallModal'))?.hide();
+        window.location.reload();
+    }
+
+    const requiredCallReasons = {
+        contacted: [
+            ['interested', 'Interested'], ['information_requested', 'Asked for Details'],
+            ['follow_up_later', 'Will Decide Later'], ['discuss_internal', 'Will Discuss Internally'],
+            ['other', 'Other']
+        ],
+        not_contactable: [
+            ['busy', 'Busy'], ['no_answer', 'No Answer'], ['switched_off', 'Switched Off'],
+            ['out_of_coverage', 'Out of Coverage'], ['invalid_number', 'Invalid Number'], ['other', 'Other']
+        ]
+    };
+
+    function chooseRequiredCallOutcome(checkbox) {
+        document.querySelectorAll('.required-outcome-choice input').forEach(item => {
+            if (item !== checkbox) item.checked = false;
+        });
+        document.getElementById('requiredCallOutcome').value = checkbox.checked ? checkbox.value : '';
+        toggleRequiredCallFields();
+    }
+
+    function chooseRequiredCallReason(checkbox) {
+        document.querySelectorAll('.required-reason-choice input').forEach(item => {
+            if (item !== checkbox) item.checked = false;
+        });
+        const noteFields = document.getElementById('requiredCallNoteFields');
+        const note = document.getElementById('requiredCallNote');
+        const outcome = document.getElementById('requiredCallOutcome').value;
+        const needsNote = ['not_interested', 'deal_close'].includes(outcome) || (checkbox.checked && checkbox.value === 'other');
+        noteFields.hidden = !needsNote;
+        document.getElementById('requiredCallNoteLabel').textContent = ['not_interested', 'deal_close'].includes(outcome) ? 'Call note / remarks' : 'Call note for Other';
+        note.required = needsNote;
+        if (noteFields.hidden) note.value = '';
+        else note.focus();
+    }
+
+    function toggleRequiredCallFields() {
+        const outcome = document.getElementById('requiredCallOutcome').value;
+        const followUp = outcome === 'follow_up';
+        document.getElementById('requiredCallFollowUpFields').hidden = !followUp;
+        const reasons = requiredCallReasons[outcome] || [];
+        const container = document.getElementById('requiredCallReasonChoices');
+        container.replaceChildren();
+        reasons.forEach(([key, label]) => {
+            const wrapper = document.createElement('label');
+            wrapper.className = 'required-reason-choice';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.value = key;
+            input.onchange = () => chooseRequiredCallReason(input);
+            wrapper.append(input, document.createTextNode(label));
+            container.appendChild(wrapper);
+        });
+        document.getElementById('requiredCallReasonFields').hidden = !reasons.length;
+        const needsNote = ['not_interested', 'deal_close'].includes(outcome);
+        document.getElementById('requiredCallNoteFields').hidden = !needsNote;
+        document.getElementById('requiredCallNoteLabel').textContent = needsNote ? 'Call note / remarks' : 'Call note for Other';
+        document.getElementById('requiredCallNote').required = needsNote;
+        document.getElementById('requiredCallNote').value = '';
+        if (needsNote) document.getElementById('requiredCallNote').focus();
+        if (followUp) renderRequiredCallCalendar();
+    }
+
+    let requiredCalendarMonth = new Date();
+    let requiredCallSelectedDate = '';
+
+    function renderRequiredCallCalendar() {
+        const year = requiredCalendarMonth.getFullYear();
+        const month = requiredCalendarMonth.getMonth();
+        document.getElementById('requiredCalendarMonth').textContent =
+            new Intl.DateTimeFormat('en-IN', {month: 'long', year: 'numeric'}).format(requiredCalendarMonth);
+        const grid = document.getElementById('requiredCalendarDays');
+        grid.replaceChildren();
+        const offset = new Date(year, month, 1).getDay();
+        const days = new Date(year, month + 1, 0).getDate();
+        for (let i = 0; i < offset; i++) grid.appendChild(document.createElement('span'));
+        const now = new Date();
+        for (let day = 1; day <= days; day++) {
+            const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = String(day);
+            button.setAttribute('aria-label', date);
+            button.setAttribute('aria-pressed', String(date === requiredCallSelectedDate));
+            if (date === requiredCallSelectedDate) button.classList.add('is-selected');
+            if (now.getFullYear() === year && now.getMonth() === month && now.getDate() === day) button.classList.add('is-today');
+            button.onclick = () => selectRequiredCallDate(date);
+            grid.appendChild(button);
+        }
+    }
+
+    function moveRequiredCallMonth(delta) {
+        requiredCalendarMonth = new Date(requiredCalendarMonth.getFullYear(), requiredCalendarMonth.getMonth() + delta, 1);
+        renderRequiredCallCalendar();
+    }
+
+    function selectRequiredCallDate(date) {
+        requiredCallSelectedDate = date;
+        syncRequiredCallSchedule();
+        renderRequiredCallCalendar();
+    }
+
+    function syncRequiredCallSchedule() {
+        const time = document.getElementById('requiredCallTime').value;
+        document.getElementById('requiredCallSchedule').value = requiredCallSelectedDate && time
+            ? `${requiredCallSelectedDate}T${time}` : '';
+        document.getElementById('requiredCalendarSelected').textContent = requiredCallSelectedDate || 'Select a date';
+    }
+
+    function chooseRequiredCallPriority(checkbox) {
+        document.querySelectorAll('.required-priority-choice input').forEach(item => {
+            if (item !== checkbox) item.checked = false;
+        });
+        document.getElementById('requiredCallPriority').value = checkbox.checked ? checkbox.value : '';
+    }
+
+    async function submitRequiredCall(event) {
+        event.preventDefault();
+        const leadId = document.getElementById('requiredCallLeadId').value;
+        const outcome = document.getElementById('requiredCallOutcome').value;
+        const note = document.getElementById('requiredCallNote').value.trim();
+        const error = document.getElementById('requiredCallError');
+        const button = document.getElementById('requiredCallSubmit');
+        error.hidden = true;
+        if (!leadId || !outcome) {
+            error.textContent = 'Choose a call outcome.';
+            error.hidden = false;
+            return;
+        }
+        const followUp = outcome === 'follow_up';
+        const schedule = document.getElementById('requiredCallSchedule').value;
+        const priority = document.getElementById('requiredCallPriority').value;
+        if (followUp && (!schedule || !priority)) {
+            error.textContent = 'Follow Up date, time and priority are required.';
+            error.hidden = false;
+            return;
+        }
+        if (['not_interested', 'deal_close'].includes(outcome) && !note) {
+            error.textContent = 'Write a call note for this outcome.';
+            error.hidden = false;
+            document.getElementById('requiredCallNote').focus();
+            return;
+        }
+        const assignee = document.getElementById('requiredCallAssignee').value;
+        const reasonInput = document.querySelector('.required-reason-choice input:checked');
+        const reason = reasonInput?.value || '';
+        if (requiredCallReasons[outcome] && (!reason || (reason === 'other' && !note))) {
+            error.textContent = 'Select a call result. For Other, write the reason.';
+            error.hidden = false;
+            return;
+        }
+        const payload = followUp
+            ? {call_schedule: schedule.replace('T', ' '), follow_up_priority: priority, ...(assignee ? {user_id: assignee} : {})}
+            : {action_type: outcome, ...(reason ? {call_reason: reason} : {}), ...((reason === 'other' || ['not_interested', 'deal_close'].includes(outcome)) ? {note} : {})};
+        const path = followUp ? 'follow-up' : 'action';
+        const panel = document.querySelector(`[data-lead-action-panel="${leadId}"]`);
+        const endpoint = !followUp && panel?.dataset.actionUrl
+            ? panel.dataset.actionUrl
+            : `{{ url('/admin/leads') }}/${encodeURIComponent(leadId)}/${path}`;
+        button.disabled = true;
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {'Accept': 'application/json', 'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}', 'X-Requested-With': 'XMLHttpRequest'},
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (!response.ok || result.status === false) {
+                const firstError = result.errors ? Object.values(result.errors).flat()[0] : null;
+                throw new Error(firstError || result.message || 'Could not save the call outcome.');
+            }
+            sessionStorage.removeItem('requiredLeadAction');
+            window.location.reload();
+        } catch (e) {
+            error.textContent = e.message || 'Could not save the call outcome.';
+            error.hidden = false;
+            button.disabled = false;
+        }
+    }
+
     async function callLeadAndMarkContacted(leadId, phone, button) {
         if (!phone) {
             return;
@@ -4991,7 +5385,7 @@ function leadActionLabel(actionType) {
 
             updateLeadStatusBadge(
                 leadId,
-                data.lead_status || 'contacted'
+                data.lead_status || 'pending'
             );
 
             const lastAction =
@@ -5002,11 +5396,18 @@ function leadActionLabel(actionType) {
             if (lastAction) {
                 lastAction.innerHTML = `
                     <i class="bi bi-telephone-fill"></i>
-                    Contacted
+                    Call initiated · outcome required
                 `;
             }
 
+            sessionStorage.setItem('requiredLeadAction', String(leadId));
+            window.addEventListener('focus', () => {
+                if (sessionStorage.getItem('requiredLeadAction') === String(leadId)) {
+                    showRequiredLeadAction(leadId);
+                }
+            }, {once: true});
             window.location.href = `tel:${phone}`;
+            window.setTimeout(() => showRequiredLeadAction(leadId), 500);
         } catch (error) {
             console.error('Lead call status update failed:', error);
 
@@ -5021,6 +5422,12 @@ function leadActionLabel(actionType) {
             }
         }
     }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        const serverPendingId = @json(optional($pendingCallLead)->id);
+        if (serverPendingId) showRequiredLeadAction(serverPendingId);
+        else sessionStorage.removeItem('requiredLeadAction');
+    });
 
     /* =====================================================
        QUICK QUOTATION
@@ -5069,11 +5476,21 @@ function leadActionLabel(actionType) {
             <div class="row g-2">
 
                 <div class="col-md-4">
-                    <label>HSN Code</label>
-
+                    <label>HSN / SAC Code</label>
+                    <select class="form-control quote-hsn"
+                            onchange="handleQuickQuoteHsnChange(this)">
+                        <option value="">Select a code</option>
+                        <option value="000001">Sample 1 (000001)</option>
+                        <option value="000002">Sample 2 (000002)</option>
+                        <option value="000003">Sample 3 (000003)</option>
+                        <option value="other">Other — enter code</option>
+                    </select>
                     <input type="text"
-                           class="form-control quote-hsn"
-                           placeholder="Enter HSN code">
+                           class="form-control quote-hsn-custom mt-2"
+                           placeholder="Enter your HSN / SAC code"
+                           inputmode="numeric"
+                           style="display:none">
+                    <small class="text-muted">Select Other for a real quotation.</small>
                 </div>
 
                 <div class="col-md-4">
@@ -5163,6 +5580,14 @@ function leadActionLabel(actionType) {
         calculateQuickQuote();
     }
 
+    function handleQuickQuoteHsnChange(select) {
+        const customInput = select.closest('.lm-quote-row').querySelector('.quote-hsn-custom');
+        const useCustomCode = select.value === 'other';
+        customInput.style.display = useCustomCode ? 'block' : 'none';
+        customInput.required = useCustomCode;
+        if (!useCustomCode) customInput.value = '';
+    }
+
     function toggleQuickDiscount() {
         const enabled = document.getElementById('quoteDiscountSwitch').checked;
         document.getElementById('quoteDiscountBox').style.display = enabled ? 'block' : 'none';
@@ -5195,8 +5620,10 @@ function leadActionLabel(actionType) {
                 productName = select.options[select.selectedIndex].text.trim();
             }
 
-            const hsnCode =
-                row.querySelector('.quote-hsn').value.trim();
+            const selectedHsn = row.querySelector('.quote-hsn').value;
+            const hsnCode = selectedHsn === 'other'
+                ? row.querySelector('.quote-hsn-custom').value.trim()
+                : selectedHsn;
 
             const price =
                 parseFloat(
@@ -5360,7 +5787,7 @@ function leadActionLabel(actionType) {
             });
 
         if (missingHsn) {
-            alert('Please enter HSN code for all products.');
+            alert('Please select or enter an HSN / SAC code for all products.');
             return;
         }
 
@@ -5438,9 +5865,7 @@ function leadActionLabel(actionType) {
             document.getElementById('quoteSaveStatus').className = 'lm-quote-status success';
             document.getElementById('quoteSaveStatus').innerText = 'Proforma saved successfully.';
 
-            setTimeout(function() {
-                quickQuoteModal?.hide();
-            }, 500);
+            completeQuotationCall();
 
         } catch (error) {
             document.getElementById('quoteSaveStatus').className = 'lm-quote-status error';
@@ -5826,9 +6251,7 @@ function leadActionLabel(actionType) {
                     'Detailed quotation logged in Lead Actions. Opening WhatsApp...';
             }
 
-            window.setTimeout(function() {
-                detailedQuotationModalInstance?.hide();
-            }, 700);
+            completeQuotationCall();
 
         } catch (error) {
             console.error('Detailed quotation WhatsApp send failed:', error);
@@ -5857,7 +6280,8 @@ function openFollowUpModal(
     leadId,
     leadName,
     remarks,
-    assignedUserId
+    assignedUserId,
+    priority = ''
 ) {
     /*
      * Follow Up may be launched from the desktop floating
@@ -5974,6 +6398,8 @@ function openFollowUpModal(
     }
 
 
+    document.getElementById('followUpPriority').value = priority || '';
+
     /*
      * Bootstrap Modal
      */
@@ -6010,11 +6436,8 @@ async function submitLeadFollowUp()
 
 
     const remarks =
-        document
-            .getElementById(
-                'followUpRemarks'
-            )
-            .value;
+        document.getElementById('followUpRemarks').value;
+    const priority = document.getElementById('followUpPriority').value;
 
 
     const userElement =
@@ -6043,6 +6466,8 @@ async function submitLeadFollowUp()
         return;
     }
 
+
+    if (!priority) { alert('Choose Hot, Warm or Cold.'); return; }
 
     if (!schedule) {
 
@@ -6103,6 +6528,7 @@ async function submitLeadFollowUp()
 
                     body:
                         JSON.stringify({
+                            follow_up_priority: priority,
                             call_schedule:
                                 schedule,
 
@@ -6168,6 +6594,8 @@ async function submitLeadFollowUp()
             );
         }
 
+
+        if (sessionStorage.getItem('requiredLeadAction') === String(leadId)) sessionStorage.removeItem('requiredLeadAction');
 
         /*
          * Close Modal
@@ -6696,6 +7124,7 @@ async function submitLeadActionNote()
         }
 
 
+        if (sessionStorage.getItem('requiredLeadAction') === String(leadId)) sessionStorage.removeItem('requiredLeadAction');
         if (leadActionNoteModalInstance) {
             leadActionNoteModalInstance.hide();
         }
@@ -6731,6 +7160,9 @@ async function submitLeadActionNote()
 
 </script>
 @endpush
+
+
+
 
 
 

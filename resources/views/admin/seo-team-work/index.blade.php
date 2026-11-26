@@ -315,13 +315,19 @@
                                 </a>
                             </div>
 
-                            <div class="d-flex align-items-center gap-2">
+                            {{-- <div class="d-flex align-items-center gap-2">
                                 <a href="{{ route('admin.backlink-assignment.index', $teamTask->id) }}"
                                     class="btn btn-success btn-sm border border-3 border-info">
                                     <i class="fa-solid fa-share-nodes me-1"></i>
                                     Backlink Manager
                                 </a>
-                            </div>
+                            </div> --}}
+
+                            <a
+                                href="{{ route('admin.seo-client-backlinks.index', $teamTask->id) }}"
+                                class="btn btn-success">
+                                Backlink Manager
+                            </a>
 
 
                           <div class="d-flex align-items-center gap-2">

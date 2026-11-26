@@ -15,7 +15,8 @@ class SupportTicket extends Model
         'subject',
         'department',
         'status',
-        'file'
+        'file',
+        'ticket_no',
     ];
 
     public function message()
@@ -30,7 +31,23 @@ class SupportTicket extends Model
 
     public function department()
     {
-        return $this->belongsTo(SupportDepartment::class);
+        return $this->belongsTo(SupportDepartment::class, 'department');
     }
+
+    protected static function booted(): void
+    {
+        static::creating(function ($ticket) {
+            if (empty($ticket->ticket_no)) {
+                do {
+                    $ticketNumber = (string) random_int(100000, 999999);
+                } while (
+                    self::where('ticket_no', $ticketNumber)->exists()
+                );
+
+                $ticket->ticket_no = $ticketNumber;
+            }
+        });
+    }
+
 
 }

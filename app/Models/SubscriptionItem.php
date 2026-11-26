@@ -13,7 +13,8 @@ class SubscriptionItem extends Model
         'subscription_id',
         'subscription_category_id',
         'service_type_id',
-        'price'
+        'price',
+        'domain_name'
     ];
 
     public function subscription()

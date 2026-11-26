@@ -31,4 +31,13 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'ai_agent' => [
+        'url' => env('AI_AGENT_URL', 'http://127.0.0.1:8001'),
+        'token' => env('AI_AGENT_TOKEN'),
+    ],
+
+    'attendance' => [
+        'sync_token' => env('ATTENDANCE_SYNC_TOKEN'),
+    ],
+
 ];

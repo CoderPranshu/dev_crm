@@ -1,7 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Admin\{AdvanceServiceController, LeaveApplicationController, TimesheetController, StaffController, AssessmentController, AttendanceController, TasksController, PayslipController, SettingsController, PerformanceController, PerformanceCriteriaController, InventoryController, InventoryItemController, BranchController, ExpenseCategoryController, ExpenseManagerController, MyProfileController, UserController, StudentController, Updater, StageController, RecruitmentController, CandidateController, DepartmentController, DesignationController, LeadCategoryController, LeadController, DealController, CompanyController, QuotationController, InvoiceController, ShortListController, OnBoardingController, LeaveTypeController, PolicyController, HolidayController, EmailTemplateController, SubscriberController, EmailAutomationController, ProposalController, TaxController, VendorController, VendorContractController, PaymentTermController, CategoryController, ProductController, WarehouseController, StockMovementController, BomController, BomItemController, ProductionOrderController, ProductionConsumptionController, GrnController, ProformaController, SalesOrderController, DeliveryController, DispatchController, TrackingController, PaymentController, PurchaseRequisitionController, PurchaseOrderController, SupportController, SupportDepartmentController, RoleController, HSNController, BankDetailController, KraController, KpiController, CommonController, PurchaseBillController, PayableController, ProformaPaymentController, WarrantyClaimController, WarrantyController, SuspenseController, NotificationController, NotificationSettingController, OtpController, RfqController, VendorQuotationController, LeadNoteController, RecoveryController, VendorReturnController, SeoServiceController, SeoPlanController, SeoTaskTemplateController, SeoPlanClientController, SeoTeamTaskController, SeoTeamWorkController, SeoReportController, DailyUpdateTaskController, ProjectController, ProjectModuleController, ProjectSubModuleController, ProjectMessageController, UserProjectController, BacklinkCategoryController, BacklinkController, BacklinkAssignmentController, OnPageSeoCategoryController, OnPageSeoTaskController, OnPageSeoController, KeywordController, SeoProjectKeywordController, RequirementAttachmentController, RequirementCommentController, RequirementController, SubModuleReviewController, DetailedQuotationController, QuotationCategoryController, QuotationServiceController};
+use App\Http\Controllers\Admin\{AdvanceServiceController, LeaveApplicationController, TimesheetController, StaffController, AssessmentController, AttendanceController, TasksController, PayslipController, SettingsController, PerformanceController, PerformanceCriteriaController, InventoryController, InventoryItemController, BranchController, ExpenseCategoryController, ExpenseManagerController, MyProfileController, UserController, StudentController, Updater, StageController, RecruitmentController, CandidateController, DepartmentController, DesignationController, LeadCategoryController, LeadController, DealController, CompanyController, QuotationController, InvoiceController, ShortListController, OnBoardingController, LeaveTypeController, PolicyController, HolidayController, EmailTemplateController, SubscriberController, EmailAutomationController, ProposalController, TaxController, VendorController, VendorContractController, PaymentTermController, CategoryController, ProductController, WarehouseController, StockMovementController, BomController, BomItemController, ProductionOrderController, ProductionConsumptionController, GrnController, ProformaController, SalesOrderController, DeliveryController, DispatchController, TrackingController, PaymentController, PurchaseRequisitionController, PurchaseOrderController, SupportController, SupportDepartmentController, RoleController, HSNController, BankDetailController, KraController, KpiController, CommonController, PurchaseBillController, PayableController, ProformaPaymentController, WarrantyClaimController, WarrantyController, SuspenseController, NotificationController, NotificationSettingController, OtpController, RfqController, VendorQuotationController, LeadNoteController, RecoveryController, VendorReturnController, SeoServiceController, SeoPlanController, SeoTaskTemplateController, SeoPlanClientController, SeoTeamTaskController, SeoTeamWorkController, SeoReportController, DailyUpdateTaskController, ProjectController, ProjectModuleController, ProjectSubModuleController, ProjectMessageController, UserProjectController, BacklinkCategoryController, BacklinkController, BacklinkAssignmentController, OnPageSeoCategoryController, OnPageSeoTaskController, OnPageSeoController, KeywordController, SeoProjectKeywordController, RequirementAttachmentController, RequirementCommentController, RequirementController, SubModuleReviewController, DetailedQuotationController, QuotationCategoryController, QuotationServiceController, BacklinkUploadController, ClientBacklinkManagerController, SpecialDayController, SubscriptionDomainStatusController, BiometricAttendanceController, BiometricAttendanceReportsController};
 use App\Models\WarrantyClaim;
 
 use App\Http\Controllers\SubscriptionCategoryController;
@@ -14,10 +14,75 @@ use App\Http\Controllers\SubscriptionPaymentController;
 use App\Http\Controllers\RenewalController;
 
 
+Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
+
+   Route::post('/seo-report/{planClient}/note', [SeoReportController::class, 'saveClientReportNote'])
+    ->name('client.seo.note.update');
+
+
+   Route::get('/today-meetings', [LeadController::class, 'todayMeetings'])
+    ->name('leads.today_meetings');
+    
+    Route::resource('detailed-quotations', DetailedQuotationController::class)->names('detailed-quotations');
+     
+    Route::delete('backlinks/uploads/{upload}', [BacklinkUploadController::class, 'destroy'])->name('backlinks.files.destroy');
+    Route::get('backlinks/upload', [BacklinkUploadController::class, 'create'])->name('backlinks.upload');
+    Route::post('backlinks/upload/prepare', [BacklinkUploadController::class, 'prepare'])->name('backlinks.prepare');
+    // Replace your OLD backlinks.import route with this one; do not define its name twice.
+    Route::get('backlinks/uploads/{upload}/open', [BacklinkUploadController::class, 'open'])->name('backlinks.files.open');
+    Route::get('backlinks/uploads/{upload}/download', [BacklinkUploadController::class, 'download'])->name('backlinks.files.download');
+
+    Route::get('/special-days', [SpecialDayController::class, 'index'])->name('special-days.index');
+
+    Route::post('seo-project/{seoPlanClient}/state-groups', [SeoProjectKeywordController::class, 'storeStateGroup'])->name('seo-project-state-groups.store');
+
+    Route::post('seo-project/{seoPlanClient}/state-groups/{stateGroup}/states', [SeoProjectKeywordController::class, 'storeState'])->name('seo-project-states.store');
+
+    Route::delete('/seo-project/{seoPlanClient}/keywords/{keyword}', [SeoProjectKeywordController::class, 'destroyKeyword'])->name('seo-project-keywords.destroy');
+
+    Route::delete('/seo-project/{seoPlanClient}/locations/{location}', [SeoProjectKeywordController::class, 'destroyLocation'])->name('seo-project-locations.destroy');
+
+
+    Route::patch('subscriptions/{subscription}/domain-status', \App\Http\Controllers\Admin\SubscriptionDomainStatusController::class)->name('subscriptions.domains.status');
+
+});
+
+
+
 
 //Admin's routes
 
 Route::name('admin.')->prefix('admin')->middleware(['auth'])->group(function () {
+
+
+Route::get(
+    'seo-plan-clients/{seoPlanClient}/backlinks',
+    [ClientBacklinkManagerController::class, 'index']
+)->name('seo-client-backlinks.index');
+
+Route::get(
+    'seo-plan-clients/{seoPlanClient}/backlinks/upload',
+    [ClientBacklinkManagerController::class, 'upload']
+)->name('seo-client-backlinks.upload');
+
+Route::post(
+    'seo-plan-clients/{seoPlanClient}/backlinks/upload',
+    [ClientBacklinkManagerController::class, 'prepare']
+)->name('seo-client-backlinks.prepare');
+
+Route::get(
+    'seo-plan-clients/{seoPlanClient}/backlinks/imports/{clientBacklinkImport}/mapping',
+    [ClientBacklinkManagerController::class, 'mapping']
+)->name('seo-client-backlinks.mapping');
+
+Route::post(
+    'seo-plan-clients/{seoPlanClient}/backlinks/imports/{clientBacklinkImport}/process',
+    [ClientBacklinkManagerController::class, 'process']
+)->name('seo-client-backlinks.process');
+
+
+    // Route::get('seo-plan-clients/{seoPlanClient}/backlinks', [ClientBacklinkManagerController::class, 'index'])->name('seo-client-backlinks.index');
+
 
     Route::post('/leads/import/prepare', [LeadController::class, 'prepareImport'])->name('leads.import.prepare');
     Route::get('/leads/import/mapping', [LeadController::class, 'importMapping'])->name('leads.import.mapping');
@@ -29,6 +94,18 @@ Route::name('admin.')->prefix('admin')->middleware(['auth'])->group(function () 
     Route::delete('/leads/rejected/bulk-delete', [LeadController::class, 'bulkDeleteRejected'])->name('lead.rejected.bulk-delete');
 
     // 
+    
+     // 
+
+    Route::post('/leads/{id}/transfer', [LeadController::class, 'transfer'])
+    ->whereNumber('id')->name('leads.transfer');
+
+    Route::post('/leads/pipeline/stage-access', [LeadController::class, 'savePipelineStageAccess']);
+    
+    Route::post('/leads/pipeline/stage-access', [\App\Http\Controllers\Admin\LeadController::class, 'savePipelineStageAccess']);
+    
+    // 
+    
 
     Route::get('/quotation-categories', [QuotationCategoryController::class, 'index'])->name('quotation-categories.index');
 
@@ -145,10 +222,27 @@ Route::name('admin.')->prefix('admin')->middleware(['auth'])->group(function () 
     Route::post('task/sort', [TasksController::class, 'sort'])->name('task.sort');
 
     //Attendance
-    Route::get('attendance', [AttendanceController::class, 'index'])->name('attendance');
-    Route::post('attendance/store', [AttendanceController::class, 'store'])->name('attendance.store');
-    Route::post('attendance/update/{id}', [AttendanceController::class, 'update'])->name('attendance.update');
-    Route::get('attendance/delete/{id}', [AttendanceController::class, 'delete'])->name('attendance.delete');
+     Route::get('attendance10', [BiometricAttendanceController::class, 'index'])->name('attendance');
+    Route::get('attendance/export', [BiometricAttendanceController::class, 'export'])->name('attendance.export');
+    Route::post('attendance/shifts', [BiometricAttendanceController::class, 'saveShift'])->name('attendance.shifts');
+    Route::post('attendance/corrections', [BiometricAttendanceController::class, 'requestCorrection'])->name('attendance.corrections.store');
+    Route::patch('attendance/corrections/{id}', [BiometricAttendanceController::class, 'reviewCorrection'])
+    ->whereNumber('id')->name('attendance.corrections.review');
+    
+    Route::get('office-attendance', 
+        [\App\Http\Controllers\Admin\OfficeAttendanceController::class, 'index'])
+        ->name('admin.office-attendance');
+        
+    Route::get('attendance/reports', [BiometricAttendanceReportsController::class, 'index'])->name('attendance.reports');
+    
+    Route::get('attendance/reports/download', [BiometricAttendanceReportsController::class, 'download'])->name('attendance.reports.download');
+    
+    Route::post('attendance/holidays', [BiometricAttendanceController::class, 'saveHoliday'])->name('attendance.holidays.store');
+    Route::delete('attendance/holidays/{id}', [BiometricAttendanceController::class, 'deleteHoliday'])
+        ->whereNumber('id')->name('attendance.holidays.delete');
+    
+    
+    
 
     //Leave application
     Route::get('leave-report', [LeaveApplicationController::class, 'index'])->name('leave.report');
@@ -323,7 +417,7 @@ Route::name('admin.')->prefix('admin')->middleware(['auth'])->group(function () 
     Route::patch('/leads-actions/{action}', [LeadController::class, 'updateLeadActionType'])->name('leads.actions.update');
     Route::post('/leads/{id}/follow-up', [LeadController::class, 'storeFollowUp'])->name('leads.follow-up.store');
 
-    Route::resource('detailed-quotations', DetailedQuotationController::class)->names('detailed-quotations');
+   
 
     Route::post('/leads/{id}/detailed-quotation/send', [LeadController::class, 'sendDetailedQuotation'])->name('leads.detailed-quotation.send');
 
@@ -967,8 +1061,8 @@ Route::name('admin.')->prefix('admin')->middleware(['auth'])->group(function () 
     Route::resource('backlink-categories', BacklinkCategoryController::class);
     Route::resource('backlinks', BacklinkController::class);
 
-    Route::get('backlinks-upload', [BacklinkController::class, 'upload'])->name('backlinks.upload');
-    Route::post('backlinks-import', [BacklinkController::class, 'import'])->name('backlinks.import');
+    // Route::get('backlinks-upload', [BacklinkController::class, 'upload'])->name('backlinks.upload');
+    // Route::post('backlinks-import', [BacklinkController::class, 'import'])->name('backlinks.import');
 
     Route::resource('on-page-seo-category', OnPageSeoCategoryController::class)->names('on-page-seo-category');
     Route::resource('onpage-seo-task', OnPageSeoTaskController::class)->names('onpage-seo-task');

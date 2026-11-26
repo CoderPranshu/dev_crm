@@ -34,21 +34,6 @@ class SeoPlanClient extends Model
         return $this->belongsTo(User::class,'team_id');
     }
 
-    // public function plan()
-    // {
-    //     return $this->belongsTo(SeoPlan::class, 'seo_plan_id');
-    // }
-
-    // public function company()
-    // {
-    //     return $this->belongsTo(Company::class);
-    // }
-
-    // public function seoPlan()
-    // {
-    //     return $this->belongsTo(SeoPlan::class);
-    // }
-
     public function company()
     {
         return $this->belongsTo(Company::class,'company_id');
@@ -83,15 +68,22 @@ class SeoPlanClient extends Model
         );
     }
 
+    /**
+     * CSV / Excel import history belonging only to this SEO client.
+     */
+    public function backlinkImports(): HasMany
+    {
+        return $this->hasMany(
+            ClientBacklinkImport::class,
+            'seo_plan_client_id'
+        );
+    }
+    
+
     public function seoExecutive()
     {
         return $this->belongsTo(User::class, 'seo_team_id');
     }
-
-    // public function keywords(): HasMany
-    // {
-    //     return $this->hasMany(Keyword::class);
-    // }
 
     public function keywords(): HasMany
     {

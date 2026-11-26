@@ -31,6 +31,12 @@ use App\Models\SeoProjectLocation;
 
 
 
+use App\Models\SeoProjectStateGroup;
+
+
+
+
+
 class SeoReportController extends Controller
 {
     public function __construct()
@@ -531,7 +537,7 @@ class SeoReportController extends Controller
             $package->weeks = $weeks;
         }
 
-        dd($package);
+        // dd($package);
 
         return view(
             'admin.seo-report.dashboard',
@@ -1737,89 +1743,656 @@ class SeoReportController extends Controller
         return $recommendations;
     }
 
-    public function clientreportdashboard(SeoPlanClient $planClient)
+    // public function clientreportdashboard(SeoPlanClient $planClient)
+    // {
+    //     $project = $planClient->load([
+    //         'company',
+    //         'seoPlan',
+    //         'keywords.rankings',
+    //         'locations.rankings'
+    //     ]);
+
+       
+
+    //     /*
+    //     |--------------------------------------------------------------------------
+    //     | Keyword Progress
+    //     |--------------------------------------------------------------------------
+    //     */
+
+    //     $keywords = $planClient->keywords;
+
+    //     /*
+    //     |--------------------------------------------------------------------------
+    //     | Backlink Progress
+    //     |--------------------------------------------------------------------------
+    //     */
+
+    //     $backlinks = BacklinkAssignment::where(
+    //             'seo_plan_client_id',
+    //             $planClient->id
+    //         )
+    //         ->with('backlink.category')
+    //         ->get();
+
+    //     /*
+    //     |--------------------------------------------------------------------------
+    //     | On Page SEO
+    //     |--------------------------------------------------------------------------
+    //     */
+
+    //     $onPages = OnPageSeo::where(
+    //             'seo_plan_client_id',
+    //             $planClient->id
+    //         )
+    //         ->with([
+    //             'category',
+    //             'task'
+    //         ])
+    //         ->get();
+
+    //     /*
+    //     |--------------------------------------------------------------------------
+    //     | Dashboard Cards
+    //     |--------------------------------------------------------------------------
+    //     */
+
+    //     $stats = [
+
+    //         'keywords' => $keywords->count(),
+
+    //         'areas' => $planClient
+    //             ->locations
+    //             ->where('type','area')
+    //             ->count(),
+
+    //         'states' => $planClient
+    //             ->locations
+    //             ->where('type','state')
+    //             ->count(),
+
+    //         'backlinks' => $backlinks->count(),
+
+    //         'backlinks_completed' => $backlinks
+    //             ->where('status','completed')
+    //             ->count(),
+
+    //         'onpage_total' => $onPages->count(),
+
+    //         'onpage_completed' => $onPages
+    //             ->where('status','completed')
+    //             ->count(),
+    //     ];
+
+    //     return view('client.seo', compact('planClient', 'project', 'keywords', 'backlinks', 'onPages', 'stats'));
+    // }
+
+        /**
+     * Display the client SEO analysis dashboard.
+     */
+     
+        /**
+     * Display the client SEO analysis dashboard.
+     */
+    // public function clientreportdashboard(SeoPlanClient $planClient)
+    // {
+    //     $project = $planClient->load([
+    //         'company',
+    //         'seoPlan',
+    //         'keywords' => function ($query): void {
+    //             $query->orderBy('id');
+    //         },
+    //         'keywords.rankings' => function ($query): void {
+    //             $query->orderBy('month_no');
+    //         },
+    //         'locations' => function ($query): void {
+    //             $query->orderBy('id');
+    //         },
+    //         'locations.rankings' => function ($query): void {
+    //             $query->orderBy('month_no');
+    //         },
+    //     ]);
+
+    //     // return $planClient;
+
+    //     // return $project->company->name;
+
+    //     /*
+    //     |------------------------------------------------------------------
+    //     | Keyword Progress
+    //     |------------------------------------------------------------------
+    //     */
+    //     $keywords = $project->keywords;
+
+    //     /*
+    //     |------------------------------------------------------------------
+    //     | Backlink Progress
+    //     |------------------------------------------------------------------
+    //     */
+    //     $backlinks = BacklinkAssignment::where(
+    //         'seo_plan_client_id',
+    //         $planClient->id
+    //     )
+    //         ->with('backlink.category')
+    //         ->get();
+
+    //     /*
+    //     |------------------------------------------------------------------
+    //     | On-Page SEO
+    //     |------------------------------------------------------------------
+    //     */
+    //     $onPages = OnPageSeo::where(
+    //         'seo_plan_client_id',
+    //         $planClient->id
+    //     )
+    //         ->with([
+    //             'category',
+    //             'task',
+    //         ])
+    //         ->get();
+
+    //     /*
+    //     |------------------------------------------------------------------
+    //     | Area and State Collections
+    //     |------------------------------------------------------------------
+    //     */
+    //     $areaLocations = $project->locations
+    //         ->where('type', SeoProjectLocation::TYPE_AREA)
+    //         ->values();
+
+    //     $stateLocations = $project->locations
+    //         ->where('type', SeoProjectLocation::TYPE_STATE)
+    //         ->values();
+
+    //     $stateGroups = SeoProjectStateGroup::where(
+    //         'seo_plan_client_id',
+    //         $planClient->id
+    //     )
+    //         ->orderBy('id')
+    //         ->get();
+
+    //     /*
+    //     | Every series is aligned against one common month axis. A missing
+    //     | month remains null, so Month 2 can never appear under Month 1.
+    //     */
+    //     $areaChartData = $this->buildLocationChartData(
+    //         $areaLocations
+    //     );
+
+    //     /*
+    //     |------------------------------------------------------------------
+    //     | One Graph Per State Group
+    //     |------------------------------------------------------------------
+    //     |
+    //     | Example:
+    //     | - Website Backlink       => its own graph
+    //     | - Social Media Backlink  => its own graph
+    //     |
+    //     | Every state/location inside a group becomes a separate graph line.
+    //     */
+    //     $stateGroupCharts = $stateGroups
+    //         ->map(function (SeoProjectStateGroup $group) use ($stateLocations) {
+    //             $groupLocations = $stateLocations
+    //                 ->where('state_group_id', $group->id)
+    //                 ->values();
+
+    //             return [
+    //                 'id' => (int) $group->id,
+    //                 'name' => $group->name,
+    //                 'state_count' => $groupLocations->count(),
+    //                 'chart' => $this->buildLocationChartData($groupLocations),
+    //             ];
+    //         })
+    //         ->filter(function (array $groupChart) {
+    //             return !empty($groupChart['chart']['series']);
+    //         })
+    //         ->values();
+
+    //     /*
+    //     |------------------------------------------------------------------
+    //     | Dashboard Cards
+    //     |------------------------------------------------------------------
+    //     */
+    //     $stats = [
+    //         'keywords' => $keywords->count(),
+    //         'areas' => $areaLocations->count(),
+    //         'states' => $stateLocations->count(),
+    //         'state_groups' => $stateGroups->count(),
+    //         'backlinks' => $backlinks->count(),
+    //         'backlinks_completed' => $backlinks
+    //             ->where('status', 'completed')
+    //             ->count(),
+    //         'onpage_total' => $onPages->count(),
+    //         'onpage_completed' => $onPages
+    //             ->where('status', 'completed')
+    //             ->count(),
+    //     ];
+
+    //     return view('client.seo', compact(
+    //         'planClient',
+    //         'project',
+    //         'keywords',
+    //         'backlinks',
+    //         'onPages',
+    //         'stats',
+    //         'areaLocations',
+    //         'stateLocations',
+    //         'areaChartData',
+    //         'stateGroupCharts'
+    //     ));
+    // }
+
+    
+    // private function buildLocationChartData(
+    //     \Illuminate\Support\Collection $locations
+    // ): array {
+    //     $months = $locations
+    //         ->flatMap(function (SeoProjectLocation $location) {
+    //             return $location->rankings->pluck('month_no');
+    //         })
+    //         ->filter(function ($month) {
+    //             return $month !== null && is_numeric($month);
+    //         })
+    //         ->map(function ($month) {
+    //             return (int) $month;
+    //         })
+    //         ->unique()
+    //         ->sort()
+    //         ->values();
+
+    //     if ($months->isEmpty()) {
+    //         return [
+    //             'months' => [],
+    //             'categories' => [],
+    //             'series' => [],
+    //         ];
+    //     }
+
+    //     $usedLabels = [];
+    //     $series = [];
+
+    //     foreach ($locations as $location) {
+    //         $rankingsByMonth = $location->rankings
+    //             ->filter(function ($ranking) {
+    //                 return $ranking->month_no !== null
+    //                     && is_numeric($ranking->month_no)
+    //                     && $ranking->ranking !== null;
+    //             })
+    //             ->sortBy('month_no')
+    //             ->keyBy(function ($ranking) {
+    //                 return (int) $ranking->month_no;
+    //             });
+
+    //         if ($rankingsByMonth->isEmpty()) {
+    //             continue;
+    //         }
+
+    //         $locationName = trim((string) $location->name);
+
+    //         if ($locationName === '') {
+    //             $locationName = 'Location #' . $location->id;
+    //         }
+
+    //         $baseLabel = $locationName;
+
+    //         $labelKey = mb_strtolower($baseLabel);
+    //         $label = $baseLabel;
+
+    //         if (isset($usedLabels[$labelKey])) {
+    //             $label .= ' (#' . $location->id . ')';
+    //         }
+
+    //         $usedLabels[$labelKey] = true;
+
+    //         $data = $months->map(function (int $month) use ($rankingsByMonth) {
+    //             $ranking = $rankingsByMonth->get($month);
+
+    //             return $ranking && $ranking->ranking !== null
+    //                 ? (int) $ranking->ranking
+    //                 : null;
+    //         })->all();
+
+    //         $series[] = [
+    //             'id' => (int) $location->id,
+    //             'name' => $label,
+    //             'data' => $data,
+    //         ];
+    //     }
+
+    //     return [
+    //         'months' => $months->all(),
+    //         'categories' => $months
+    //             ->map(function (int $month) {
+    //                 return 'Month ' . $month;
+    //             })
+    //             ->all(),
+    //         'series' => $series,
+    //     ];
+    // }
+
+        /**
+     * Display the client SEO analysis dashboard.
+     */
+    public function clientreportdashboard(SeoPlanClient $planClient): View
     {
         $project = $planClient->load([
             'company',
             'seoPlan',
-            'keywords.rankings',
-            'locations.rankings'
+            'keywords' => function ($query): void {
+                $query->orderBy('id');
+            },
+            'keywords.rankings' => function ($query): void {
+                $query->orderBy('month_no');
+            },
+            'locations' => function ($query): void {
+                $query->orderBy('id');
+            },
+            'locations.rankings' => function ($query): void {
+                $query->orderBy('month_no');
+            },
         ]);
 
-       
-
         /*
-        |--------------------------------------------------------------------------
+        |------------------------------------------------------------------
         | Keyword Progress
-        |--------------------------------------------------------------------------
+        |------------------------------------------------------------------
         */
-
-        $keywords = $planClient->keywords;
+        $keywords = $project->keywords;
 
         /*
-        |--------------------------------------------------------------------------
+        |------------------------------------------------------------------
         | Backlink Progress
-        |--------------------------------------------------------------------------
+        |------------------------------------------------------------------
         */
-
         $backlinks = BacklinkAssignment::where(
-                'seo_plan_client_id',
-                $planClient->id
-            )
+            'seo_plan_client_id',
+            $planClient->id
+        )
             ->with('backlink.category')
             ->get();
 
         /*
-        |--------------------------------------------------------------------------
-        | On Page SEO
-        |--------------------------------------------------------------------------
+        |------------------------------------------------------------------
+        | On-Page SEO
+        |------------------------------------------------------------------
         */
-
         $onPages = OnPageSeo::where(
-                'seo_plan_client_id',
-                $planClient->id
-            )
+            'seo_plan_client_id',
+            $planClient->id
+        )
             ->with([
                 'category',
-                'task'
+                'task',
             ])
             ->get();
 
         /*
-        |--------------------------------------------------------------------------
-        | Dashboard Cards
-        |--------------------------------------------------------------------------
+        |------------------------------------------------------------------
+        | Area and State Collections
+        |------------------------------------------------------------------
         */
+        $areaLocations = $project->locations
+            ->where('type', SeoProjectLocation::TYPE_AREA)
+            ->values();
 
+        $stateLocations = $project->locations
+            ->where('type', SeoProjectLocation::TYPE_STATE)
+            ->values();
+
+        $stateGroups = SeoProjectStateGroup::where(
+            'seo_plan_client_id',
+            $planClient->id
+        )
+            ->orderBy('id')
+            ->get();
+
+        /*
+        | Every series is aligned against one common month axis. A missing
+        | month remains null, so Month 2 can never appear under Month 1.
+        */
+        $areaChartData = $this->buildLocationChartData(
+            $areaLocations
+        );
+
+        /*
+        |------------------------------------------------------------------
+        | One Graph Per State Group
+        |------------------------------------------------------------------
+        |
+        | Example:
+        | - Website Backlink       => its own graph
+        | - Social Media Backlink  => its own graph
+        |
+        | Every state/location inside a group becomes a separate graph line.
+        */
+        $stateGroupCharts = $stateGroups
+            ->map(function (SeoProjectStateGroup $group) use ($stateLocations) {
+                $groupLocations = $stateLocations
+                    ->where('state_group_id', $group->id)
+                    ->values();
+
+                return [
+                    'id' => (int) $group->id,
+                    'name' => $group->name,
+                    'state_count' => $groupLocations->count(),
+                    'chart' => $this->buildLocationChartData($groupLocations),
+                ];
+            })
+            ->filter(function (array $groupChart) {
+                return !empty($groupChart['chart']['series']);
+            })
+            ->values();
+
+        /*
+        |------------------------------------------------------------------
+        | Dashboard Cards
+        |------------------------------------------------------------------
+        */
         $stats = [
-
             'keywords' => $keywords->count(),
-
-            'areas' => $planClient
-                ->locations
-                ->where('type','area')
-                ->count(),
-
-            'states' => $planClient
-                ->locations
-                ->where('type','state')
-                ->count(),
-
+            'areas' => $areaLocations->count(),
+            'states' => $stateLocations->count(),
+            'state_groups' => $stateGroups->count(),
             'backlinks' => $backlinks->count(),
-
             'backlinks_completed' => $backlinks
-                ->where('status','completed')
+                ->where('status', 'completed')
                 ->count(),
-
             'onpage_total' => $onPages->count(),
-
             'onpage_completed' => $onPages
-                ->where('status','completed')
+                ->where('status', 'completed')
                 ->count(),
         ];
 
-        return view('client.seo', compact('planClient', 'project', 'keywords', 'backlinks', 'onPages', 'stats'));
+        $reportNote = \Illuminate\Support\Facades\DB::table('seo_client_report_notes')
+            ->where('seo_plan_client_id', $planClient->id)
+            ->value('content');
+
+        $canEditReportNote = auth()->check() && auth()->user()->hasRole('Admin');
+
+
+
+        return view('client.seo', compact(
+            'planClient',
+            'project',
+            'keywords',
+            'backlinks',
+            'onPages',
+            'stats',
+            'areaLocations',
+            'stateLocations',
+            'areaChartData',
+            'stateGroupCharts',
+            'reportNote',
+            'canEditReportNote',
+        ));
     }
+
+    public function saveClientReportNote(\Illuminate\Http\Request $request, SeoPlanClient $planClient): \Illuminate\Http\RedirectResponse
+    {
+        abort_unless(auth()->check() && auth()->user()->hasRole('Admin'), 403);
+
+        $data = $request->validate([
+            'content' => ['nullable', 'string', 'max:20000'],
+        ]);
+
+        $input = trim((string) ($data['content'] ?? ''));
+        $safeHtml = '';
+
+        if ($input !== '') {
+            // The editor permits formatting, but stored HTML must never run scripts.
+            $document = new \DOMDocument('1.0', 'UTF-8');
+            $previous = libxml_use_internal_errors(true);
+            $document->loadHTML('<?xml encoding="UTF-8"?><div id="report-note-root">' . $input . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+
+            $root = $document->getElementsByTagName('div')->item(0);
+            if ($root) {
+                $allowed = ['p', 'div', 'br', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'h3', 'h4', 'blockquote'];
+                $removeWithContent = ['script', 'style', 'iframe', 'object', 'embed', 'svg', 'math', 'form', 'input', 'textarea', 'button', 'template'];
+
+                $clean = function (\DOMNode $parent) use (&$clean, $document, $allowed, $removeWithContent): void {
+                    foreach (iterator_to_array($parent->childNodes) as $node) {
+                        if ($node instanceof \DOMComment) {
+                            $parent->removeChild($node);
+                            continue;
+                        }
+                        if (!($node instanceof \DOMElement)) continue;
+
+                        $tag = strtolower($node->tagName);
+                        if (in_array($tag, $removeWithContent, true)) {
+                            $parent->removeChild($node);
+                            continue;
+                        }
+                        $clean($node);
+                        if (!in_array($tag, $allowed, true)) {
+                            while ($node->firstChild) $parent->insertBefore($node->firstChild, $node);
+                            $parent->removeChild($node);
+                            continue;
+                        }
+                        foreach (iterator_to_array($node->attributes) as $attribute) {
+                            $node->removeAttributeNode($attribute);
+                        }
+                    }
+                };
+
+                $clean($root);
+                foreach (iterator_to_array($root->childNodes) as $node) {
+                    $safeHtml .= $document->saveHTML($node);
+                }
+                if (trim($root->textContent) === '') $safeHtml = '';
+            }
+        }
+
+        \Illuminate\Support\Facades\DB::table('seo_client_report_notes')->updateOrInsert(
+            ['seo_plan_client_id' => $planClient->id],
+            [
+                'content' => $safeHtml,
+                'updated_by' => auth()->id(),
+                'updated_at' => now(),
+            ]
+        );
+
+        return redirect()->back()->with('seo_report_note_saved', 'Report note saved.');
+    }
+
+
+    /**
+     * Build an ApexCharts-ready data set for any number of areas or states.
+     */
+    private function buildLocationChartData(
+        \Illuminate\Support\Collection $locations
+    ): array {
+        $months = $locations
+            ->flatMap(function (SeoProjectLocation $location) {
+                return $location->rankings->pluck('month_no');
+            })
+            ->filter(function ($month) {
+                return $month !== null && is_numeric($month);
+            })
+            ->map(function ($month) {
+                return (int) $month;
+            })
+            ->unique()
+            ->sort()
+            ->values();
+
+        if ($months->isEmpty()) {
+            return [
+                'months' => [],
+                'categories' => [],
+                'series' => [],
+            ];
+        }
+
+        $usedLabels = [];
+        $series = [];
+
+        foreach ($locations as $location) {
+            $rankingsByMonth = $location->rankings
+                ->filter(function ($ranking) {
+                    return $ranking->month_no !== null
+                        && is_numeric($ranking->month_no)
+                        && $ranking->ranking !== null;
+                })
+                ->sortBy('month_no')
+                ->keyBy(function ($ranking) {
+                    return (int) $ranking->month_no;
+                });
+
+            if ($rankingsByMonth->isEmpty()) {
+                continue;
+            }
+
+            $locationName = trim((string) $location->name);
+
+            if ($locationName === '') {
+                $locationName = 'Location #' . $location->id;
+            }
+
+            $baseLabel = $locationName;
+
+            $labelKey = mb_strtolower($baseLabel);
+            $label = $baseLabel;
+
+            if (isset($usedLabels[$labelKey])) {
+                $label .= ' (#' . $location->id . ')';
+            }
+
+            $usedLabels[$labelKey] = true;
+
+            $data = $months->map(function (int $month) use ($rankingsByMonth) {
+                $ranking = $rankingsByMonth->get($month);
+
+                return $ranking && $ranking->ranking !== null
+                    ? (int) $ranking->ranking
+                    : null;
+            })->all();
+
+            $series[] = [
+                'id' => (int) $location->id,
+                'name' => $label,
+                'data' => $data,
+            ];
+        }
+
+        return [
+            'months' => $months->all(),
+            'categories' => $months
+                ->map(function (int $month) {
+                    return 'Month ' . $month;
+                })
+                ->all(),
+            'series' => $series,
+        ];
+    }
+
+
+    
+
+
+
+
 
  
 

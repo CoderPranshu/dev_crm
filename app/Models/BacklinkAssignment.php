@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BacklinkAssignment extends Model
 {
@@ -12,27 +13,18 @@ class BacklinkAssignment extends Model
     protected $fillable = [
 
         'seo_plan_client_id',
-
+        'client_backlink_import_id',
         'backlink_id',
-
         'assigned_to',
-
         'assigned_by',
-
         'username',
-
         'password',
-
         'attachment',
-
         'remarks',
-
         'status',
-
         'assigned_at',
-
         'completed_at',
-
+        'completed_by',
     ];
 
     /*
@@ -95,4 +87,14 @@ class BacklinkAssignment extends Model
     {
         return $this->belongsTo(User::class, 'completed_by');
     }
+
+     /**
+     * Source CSV / Excel import used to create this assignment.
+     */
+    public function backlinkImport(): BelongsTo
+    {
+        return $this->belongsTo(ClientBacklinkImport::class, 'client_backlink_import_id');
+    }
+
+
 }

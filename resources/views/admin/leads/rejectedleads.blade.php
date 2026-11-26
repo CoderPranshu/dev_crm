@@ -907,7 +907,7 @@
                                 <th>#</th>
                                 <th>{{ get_phrase('Title') }}</th>
                                 <th>{{ get_phrase('Phone') }}</th>
-                                <th>{{ get_phrase('Requirement') }}</th>
+                                <th>{{ get_phrase('Latest Lead Note') }}</th>
                                 <th>{{ get_phrase('Category') }}</th>
                                 <th>{{ get_phrase('Status') }}</th>
                                 <th class="text-center">{{ get_phrase('Action') }}</th>
@@ -933,6 +933,12 @@
                                         <span class="rj-number">
                                             {{ ($leads->firstItem() ?? 1) + $loop->index }}
                                         </span>
+                                        
+                                        <div>
+                                            <span class="badge bg-warning text-dark" style="font-size: 11px;">
+                                                #{{ $lead->id }}
+                                            </span>
+                                        </div>
                                     </td>
 
                                     <td>
@@ -952,8 +958,8 @@
                                     </td>
 
                                     <td>
-                                        <span class="rj-cut" title="{{ $lead->requirement ?? '-' }}">
-                                            {{ $lead->requirement ?? '-' }}
+                                        <span class="rj-cut" title="{{ $lead->latestNote->description ?? '-' }}">
+                                            {{ $lead->latestNote->description ?? '-' }}
                                         </span>
                                     </td>
 
@@ -1117,8 +1123,8 @@
                         </div>
 
                         <div class="rj-mobile-copy">
-                            <small>Requirement</small>
-                            <p>{{ $lead->requirement ?? '-' }}</p>
+                            <small>Latest Lead Note</small>
+                            <p>{{ $lead->latestNote->description ?? '-' }}</p>
                         </div>
 
                         <div class="rj-mobile-actions">
@@ -1794,6 +1800,11 @@ document.addEventListener('DOMContentLoaded', function () {
 }
 </style>
 @endpush
+
+
+
+
+
 
 
 

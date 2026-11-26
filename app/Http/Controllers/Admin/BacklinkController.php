@@ -5,385 +5,177 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Backlink;
 use App\Models\BacklinkCategory;
+use App\Models\BacklinkUpload;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class BacklinkController extends Controller
 {
-    /*
-    |--------------------------------------------------------------------------
-    | Index
-    |--------------------------------------------------------------------------
-    */
-
-    public function index(Request $request)
+    /**
+     * Display uploaded CSV / Excel files.
+     */
+    public function index()
     {
-        $query = Backlink::with([
-            'category',
-            'assignedTo',
-            'assignedBy'
-        ]);
+        $ownerQuery = BacklinkUpload::query()
+            ->where('created_by', auth()->id());
 
-        if ($request->filled('search')) {
+        $totalUploadedFiles = (clone $ownerQuery)->count();
 
-            $query->where(function ($q) use ($request) {
+        $csvUploadedFiles = (clone $ownerQuery)
+            ->where('extension', 'csv')
+            ->count();
 
-                $q->where('website_url', 'like', '%' . $request->search . '%')
-                  ->orWhere('domain_authority', 'like', '%' . $request->search . '%')
-                  ->orWhere('page_authority', 'like', '%' . $request->search . '%');
+        $excelUploadedFiles = (clone $ownerQuery)
+            ->whereIn('extension', ['xls', 'xlsx'])
+            ->count();
 
-            });
+        $totalUploadedBytes = (int) (clone $ownerQuery)->sum('size');
 
-        }
-
-        if ($request->filled('category')) {
-
-            $query->where(
-                'backlink_category_id',
-                $request->category
-            );
-
-        }
-
-        if ($request->filled('status')) {
-
-            $query->where(
-                'status',
-                $request->status
-            );
-
-        }
-
-        $backlinks = $query
+        $uploads = BacklinkUpload::query()
+            ->with('category')
+            ->where('created_by', auth()->id())
             ->latest()
-            ->paginate(20)
+            ->paginate(9)
             ->withQueryString();
-
-        $categories = BacklinkCategory::where('status',1)->get();
-
-        $totalBacklinks = Backlink::count();
-
-        $availableBacklinks = Backlink::where(
-            'status',
-            'available'
-        )->count();
-
-        $assignedBacklinks = Backlink::where(
-            'status',
-            'assigned'
-        )->count();
-
-        $completedBacklinks = Backlink::where(
-            'status',
-            'completed'
-        )->count();
 
         return view(
             'admin.backlinks.index',
             compact(
-                'backlinks',
-                'categories',
-                'totalBacklinks',
-                'availableBacklinks',
-                'assignedBacklinks',
-                'completedBacklinks'
+                'uploads',
+                'totalUploadedFiles',
+                'csvUploadedFiles',
+                'excelUploadedFiles',
+                'totalUploadedBytes'
             )
         );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Create
-    |--------------------------------------------------------------------------
-    */
-
+    /**
+     * Show the manual backlink form.
+     */
     public function create()
     {
-        $categories = BacklinkCategory::where(
-            'status',
-            1
-        )->get();
+        $categories = BacklinkCategory::where('status', 1)
+            ->orderBy('name')
+            ->get();
 
-        return view(
-            'admin.backlinks.create',
-            compact('categories')
-        );
+        return view('admin.backlinks.create', compact('categories'));
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Store
-    |--------------------------------------------------------------------------
-    */
-
+    /**
+     * Store a manually created backlink.
+     */
     public function store(Request $request)
     {
-        $request->validate([
-
-            'backlink_category_id' => 'required|exists:backlink_categories,id',
-
-            'website_url' => 'required|url|unique:backlinks,website_url',
-
-            'domain_authority' => 'nullable|numeric|min:0|max:100',
-
-            'page_authority' => 'nullable|numeric|min:0|max:100',
-
+        $validated = $request->validate([
+            'backlink_category_id' => ['required', 'exists:backlink_categories,id'],
+            'website_url' => ['required', 'url', 'unique:backlinks,website_url'],
+            'domain_authority' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'page_authority' => ['nullable', 'integer', 'min:0', 'max:100'],
         ]);
 
-        DB::beginTransaction();
-
         try {
-
-            Backlink::create([
-
-                'backlink_category_id' => $request->backlink_category_id,
-
-                'website_url' => $request->website_url,
-
-                'domain_authority' => $request->domain_authority,
-
-                'page_authority' => $request->page_authority,
-
-                'created_by' => auth()->id(),
-
-            ]);
-
-            DB::commit();
+            DB::transaction(function () use ($validated) {
+                Backlink::create([
+                    'backlink_category_id' => $validated['backlink_category_id'],
+                    'website_url' => $validated['website_url'],
+                    'domain_authority' => $validated['domain_authority'] ?? null,
+                    'page_authority' => $validated['page_authority'] ?? null,
+                    'status' => 'available',
+                    'created_by' => auth()->id(),
+                ]);
+            });
 
             return redirect()
                 ->route('admin.backlinks.index')
-                ->with(
-                    'success',
-                    'Backlink Added Successfully.'
-                );
-
-        } catch (\Exception $e) {
-
-            DB::rollBack();
+                ->with('success', 'Backlink added successfully.');
+        } catch (\Throwable $e) {
+            report($e);
 
             return back()
                 ->withInput()
-                ->with(
-                    'error',
-                    $e->getMessage()
-                );
-
+                ->with('error', 'Backlink could not be added.');
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Edit
-    |--------------------------------------------------------------------------
-    */
-
+    /**
+     * Show the manual backlink edit form.
+     */
     public function edit($id)
     {
         $backlink = Backlink::findOrFail($id);
 
-        $categories = BacklinkCategory::where(
-            'status',
-            1
-        )->get();
+        $categories = BacklinkCategory::where('status', 1)
+            ->orderBy('name')
+            ->get();
 
         return view(
             'admin.backlinks.edit',
-            compact(
-                'backlink',
-                'categories'
-            )
+            compact('backlink', 'categories')
         );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Update
-    |--------------------------------------------------------------------------
-    */
-
+    /**
+     * Update a manually created backlink.
+     */
     public function update(Request $request, $id)
     {
         $backlink = Backlink::findOrFail($id);
 
-        $request->validate([
-
-            'backlink_category_id' => 'required|exists:backlink_categories,id',
-
-            'website_url' => 'required|url|unique:backlinks,website_url,' . $backlink->id,
-
-            'domain_authority' => 'nullable|numeric|min:0|max:100',
-
-            'page_authority' => 'nullable|numeric|min:0|max:100',
-
+        $validated = $request->validate([
+            'backlink_category_id' => ['required', 'exists:backlink_categories,id'],
+            'website_url' => [
+                'required',
+                'url',
+                'unique:backlinks,website_url,' . $backlink->id,
+            ],
+            'domain_authority' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'page_authority' => ['nullable', 'integer', 'min:0', 'max:100'],
         ]);
 
-        DB::beginTransaction();
-
         try {
-
-            $backlink->update([
-
-                'backlink_category_id' => $request->backlink_category_id,
-
-                'website_url' => $request->website_url,
-
-                'domain_authority' => $request->domain_authority,
-
-                'page_authority' => $request->page_authority,
-
-            ]);
-
-            DB::commit();
+            DB::transaction(function () use ($backlink, $validated) {
+                $backlink->update([
+                    'backlink_category_id' => $validated['backlink_category_id'],
+                    'website_url' => $validated['website_url'],
+                    'domain_authority' => $validated['domain_authority'] ?? null,
+                    'page_authority' => $validated['page_authority'] ?? null,
+                ]);
+            });
 
             return redirect()
                 ->route('admin.backlinks.index')
-                ->with(
-                    'success',
-                    'Backlink Updated Successfully.'
-                );
-
-        } catch (\Exception $e) {
-
-            DB::rollBack();
+                ->with('success', 'Backlink updated successfully.');
+        } catch (\Throwable $e) {
+            report($e);
 
             return back()
                 ->withInput()
-                ->with(
-                    'error',
-                    $e->getMessage()
-                );
-
+                ->with('error', 'Backlink could not be updated.');
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Destroy
-    |--------------------------------------------------------------------------
-    */
-
+    /**
+     * Delete a manually created backlink.
+     */
     public function destroy($id)
     {
-        DB::beginTransaction();
-
         try {
-
-            $backlink = Backlink::findOrFail($id);
-
-            $backlink->delete();
-
-            DB::commit();
+            DB::transaction(function () use ($id) {
+                Backlink::findOrFail($id)->delete();
+            });
 
             return redirect()
                 ->route('admin.backlinks.index')
-                ->with(
-                    'success',
-                    'Backlink Deleted Successfully.'
-                );
+                ->with('success', 'Backlink deleted successfully.');
+        } catch (\Throwable $e) {
+            report($e);
 
-        } catch (\Exception $e) {
-
-            DB::rollBack();
-
-            return back()
-                ->with(
-                    'error',
-                    $e->getMessage()
-                );
-
-        }
-    }
-
-    public function upload()
-    {
-        $categories = BacklinkCategory::where(
-            'status',
-            1
-        )->get();
-
-        return view(
-            'admin.backlinks.upload',
-            compact('categories')
-        );
-    }
-
-    public function import(Request $request)
-    {
-        $request->validate([
-
-            'backlink_category_id'=>'required|exists:backlink_categories,id',
-
-            'csv'=>'required|mimes:csv,txt'
-
-        ]);
-
-        $file = fopen($request->file('csv')->getRealPath(),'r');
-
-        $header = fgetcsv($file);
-
-        DB::beginTransaction();
-
-        try{
-
-            $imported=0;
-
-            $skipped=0;
-
-            while(($row=fgetcsv($file))!==false){
-
-                $website=trim($row[0]);
-
-                $da=$row[1] ?? null;
-
-                $pa=$row[2] ?? null;
-
-                if(
-                    Backlink::where('website_url',$website)->exists()
-                ){
-                    $skipped++;
-                    continue;
-                }
-
-                Backlink::create([
-
-                    'backlink_category_id'=>$request->backlink_category_id,
-
-                    'website_url'=>$website,
-
-                    'domain_authority'=>$da,
-
-                    'page_authority'=>$pa,
-
-                    'status'=>'available',
-
-                    'created_by'=>auth()->id(),
-
-                ]);
-
-                $imported++;
-
-            }
-
-            fclose($file);
-
-            DB::commit();
-
-            return redirect()
-                ->route('admin.backlinks.index')
-                ->with(
-                    'success',
-                    "Imported : {$imported} | Skipped : {$skipped}"
-                );
-
-        }catch(\Exception $e){
-
-            DB::rollBack();
-
-            return back()->with(
-                'error',
-                $e->getMessage()
-            );
-
+            return back()->with('error', 'Backlink could not be deleted.');
         }
     }
 }
+
+
+
+
